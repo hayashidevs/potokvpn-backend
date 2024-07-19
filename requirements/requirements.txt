@@ -1,0 +1,10 @@
+Django==3.2.8
+djangorestframework==3.12.4
+paramiko
+PyYAML
+requests
+celery
+redis
+django-axes
+django-cron
+aiogram==2.25
