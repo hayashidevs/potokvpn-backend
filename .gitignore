@@ -7,4 +7,7 @@ __pycache__/
 /.idea/
 config.py
 configs/
-myproject/myproject/settings.py
+secrets.json
+staticfiles/
+database_config.json
+restore.sql

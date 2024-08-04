@@ -1,4 +1,4 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 import json
 import uuid
 import requests
@@ -8,6 +8,13 @@ from django.http import JsonResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.utils.html import format_html
 from .models import client, rate, subscription
+
+# Set up basic logging configuration
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]  # Logs to the console
+)
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +107,7 @@ class rateAdmin(admin.ModelAdmin):
 
 class subscriptionAdmin(admin.ModelAdmin):
     list_display = ('get_client_username', 'get_client_firstname', 'get_rate_name', 'name', 'datestart', 'dateend', 'add_user_button')
-    search_fields = ('client__username', 'rate__name')
+    search_fields = ('clientid__username', 'rateid__name', 'clientid__firstname')
     list_filter = ('clientid__username', 'rateid__name', 'datestart', 'dateend')
     change_list_template = 'admin/subscription_change_list.html'
     change_form_template = 'admin/subscription_change_form.html'
@@ -147,6 +154,45 @@ class subscriptionAdmin(admin.ModelAdmin):
             self.message_user(request, "Exception: " + str(e), level='error')
 
         return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
+    
+    actions = ['give_config_to_all_subscriptions']
+
+    def give_config_to_all_subscriptions(self, request, queryset):
+        total_processed = 0
+        total_failed = 0
+
+        logger.info("Starting to process all subscriptions...")
+
+        for sub in subscription.objects.all():
+            logger.info(f"Processing subscription ID: {sub.id} for client: {sub.clientid.username}")
+            try:
+                response = requests.post(
+                    'http://v1632382.hosted-by-vdsina.ru:8000/wireguard/add_user/',
+                    json={'subscription_id': str(sub.id)},
+                    headers={'Content-Type': 'application/json'}
+                )
+                logger.info(f"Received response with status code {response.status_code} for subscription ID: {sub.id}")
+
+                if response.status_code == 200:
+                    response_data = response.json()
+                    if response_data.get('status') == 'success':
+                        total_processed += 1
+                        logger.info(f"Successfully processed subscription ID: {sub.id}. Config content: {response_data.get('config_content')}")
+                    else:
+                        total_failed += 1
+                        logger.error(f"Failed to process subscription ID: {sub.id}. Error: {response_data.get('message')}")
+                else:
+                    total_failed += 1
+                    logger.error(f"HTTP error for subscription ID: {sub.id} with status code {response.status_code}. Response content: {response.content}")
+
+            except Exception as e:
+                total_failed += 1
+                logger.error(f"Exception occurred while processing subscription ID: {sub.id}. Exception: {str(e)}")
+
+        self.message_user(request, f"Processed {total_processed} subscriptions successfully. {total_failed} failed.", level=messages.SUCCESS)
+        logger.info(f"Finished processing subscriptions. Total processed: {total_processed}, Total failed: {total_failed}")
+
+    give_config_to_all_subscriptions.short_description = "Give config to all subscriptions"
 
     def get_client_username(self, obj):
         return obj.clientid.username

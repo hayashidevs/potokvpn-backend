@@ -6,4 +6,4 @@ class ApiConfig(AppConfig):
     name = 'api'
 
     def ready(self):
-        from . import cron
+        from . import crons
