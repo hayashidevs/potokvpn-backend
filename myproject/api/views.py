@@ -40,6 +40,24 @@ class clientViewSet(viewsets.ModelViewSet):
         client_instance.referred_by = referred_by_client
         client_instance.save()
         return Response({'status': 'referred_by updated'}, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=['patch'], url_path='update_by_username')
+    def update_client_by_username(self, request):
+        username = request.data.get('username')
+        if not username:
+            return Response({'status': 'username not provided'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            client_instance = client.objects.get(username=username)
+        except client.DoesNotExist:
+            return Response({'status': 'client not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = self.get_serializer(client_instance, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 class rateViewSet(viewsets.ModelViewSet):

@@ -21,7 +21,7 @@ def add_user(request):
         add_status, add_message = add_peer(subscription_id_str)
         if add_status == CommandStatus.OK:
             client_name = subscription_id_str[:8]
-            config_file_path = f"/root/configs/wg0-client-{client_name}.conf"
+            config_file_path = f"/root/configs/awg0-client-{client_name}.conf"
             
             if os.path.exists(config_file_path):
                 with open(config_file_path, 'r') as config_file:
@@ -67,7 +67,7 @@ def get_config(request):
         client_name = subscription_id_str[:8]
         
         # Construct the file path
-        config_file_path = f"/root/configs/wg0-client-{client_name}.conf"
+        config_file_path = f"/root/configs/awg0-client-{client_name}.conf"
         
         # Check if the file exists and read its content
         if os.path.exists(config_file_path):

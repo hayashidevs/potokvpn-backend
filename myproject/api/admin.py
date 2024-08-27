@@ -42,7 +42,7 @@ class subscriptionInline(admin.TabularInline):
     view_subscription_link.short_description = 'Перейти к подписке'
 
 class clientAdmin(admin.ModelAdmin):
-    list_display = ('username', 'firstname', 'telegramid', 'get_first_subscription', 'get_subscription_count', 'id', 'get_referred_by_username')
+    list_display = ('username', 'firstname', 'telegramid', 'get_subscription_count', 'id', 'get_referred_by_username')
     search_fields = ('username', 'firstname', 'telegramid', 'id')
     readonly_fields = ('id',)
     list_filter = ('username', 'id', 'referred_by__username', 'UsedTestSubscription')

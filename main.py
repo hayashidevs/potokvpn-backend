@@ -19,10 +19,10 @@ import config
 from api_client import *
 import uuid
 
-key = 'PROMO2024'
+key = config.Promik
 
-API_TOKEN = '7062498200:AAGmnZperbR4iPaL3XTeIyU4e7VSR1Eg48o'
-YOOTOKEN = '381764678:TEST:85112'
+API_TOKEN = config.TELEGRAM_TOKEN
+YOOTOKEN = config.PAYMENTS_TOKEN
 
 urls = {'iphone': 'https://apps.apple.com/ru/app/wireguard/id1441195209', 'android': 'https://play.google.com/store/apps/details?id=com.wireguard.android&hl=en', 'macos': 'https://apps.apple.com/es/app/wireguard/id1451685025?mt=12', 'windows': 'https://download.wireguard.com/windows-client/wireguard-installer.exe'}
 
@@ -65,21 +65,33 @@ class Add_days_for_sub(StatesGroup):
 @dp.message_handler(Command("start"), state='*')
 async def start(message: types.Message, state: FSMContext):
     await state.finish()
-    status = await api_client.check_user_registration(message.from_user.id)
-    if status[1] is False:
-        await api_client.register_user(
+    check_register = await api_client.check_and_register_with_username(
             message.from_user.id, 
             message.from_user.username, 
             message.from_user.first_name,
             message.from_user.last_name
-        )
-        await message.answer(
-            f"{message.from_user.first_name}\nДобро пожаловать в [ поток 𝗩𝗣𝗡 ]\n🌐 Ваш надежный VPN сервис\n🌅 Следи за новостями в группе и будь в потоке @potok_you")
+    )
+
+    if check_register[0] is False:
+        status = await api_client.check_user_registration(message.from_user.id)
+        if status[1] is False:
+            await api_client.register_user(
+                message.from_user.id, 
+                message.from_user.username, 
+                message.from_user.first_name,
+                message.from_user.last_name
+            )
+            await message.answer(
+                f"{message.from_user.first_name}\nДобро пожаловать в [ поток 𝗩𝗣𝗡 ]\n🌐 Ваш надежный VPN сервис\n🌅 Следи за новостями в группе и будь в потоке @potok_you")
+        else:
+            await message.answer(
+                f"{message.from_user.first_name}\nС возвращением в [ поток 𝗩𝗣𝗡 ]\n🌐 Ваш надежный VPN сервис\n🌅 Следи за новостями в группе и будь в потоке @potok_you")
     else:
         await message.answer(
-            f"{message.from_user.first_name}\nС возвращением в [ поток 𝗩𝗣𝗡 ]\n🌐 Ваш надежный VPN сервис\n🌅 Следи за новостями в группе и будь в потоке @potok_you")
+                f"{message.from_user.first_name}\nДобро пожаловать в [ поток 𝗩𝗣𝗡 ]\n🌐 Ваш надежный VPN сервис\n🌅 Следи за новостями в группе и будь в потоке @potok_you")
 
     await main_menu(message)
+
 
 
 @dp.pre_checkout_query_handler(state='*')
@@ -169,7 +181,7 @@ async def got_payment(message: types.Message, state: FSMContext):
                 InlineKeyboardButton("Windows", url=urls['windows']),
             )
             await message.answer(
-                    f"🔤 Введите название для новой подписки", reply_markup=types.ReplyKeyboardRemove())
+                    f"🔤 Введите название для новой подписки\n\nНапример: «iPhone Петр, MacBook Иван»", reply_markup=types.ReplyKeyboardRemove())
             await Oform.NameDevice.set()
 
 

@@ -622,3 +622,45 @@ async def find_client_by_referral_id(referral_id):
     except Exception as e:
         print(f"API request error: {str(e)}")
         return None
+    
+async def check_and_register_with_username(telegram_id, username, first_name, last_name):
+    async with aiohttp.ClientSession() as session:
+        if username is None:
+            username = f"user_{telegram_id}"
+        
+        url = f"{config.DJANGO_API_URL}/api/clients/"
+        params = {'username': str(username)}
+        
+        # Проверка, существует ли пользователь с данным username
+        async with session.get(url, params=params) as response:
+            if response.status == 200:
+                print(1)
+                json_response = await response.json()
+                
+                if json_response:
+                    # Если пользователь найден, обновляем его запись
+                    update_url = f"{config.DJANGO_API_URL}/api/clients/update_by_username/"
+                    
+                    data = {
+                        'telegramid': telegram_id,
+                        'username': username,
+                        'firstname': first_name,
+                        'lastname': last_name
+                    }
+                    
+                    async with session.patch(update_url, json=data) as update_response:
+                        update_status = update_response.status
+                        if update_status in (200, 201):
+                            updated_json_response = await update_response.json()
+                            logging.info(f"Update Successful: {updated_json_response}")
+                            return True, updated_json_response  # Успешное обновление, возвращаем JSON данные
+                        else:
+                            update_text_response = await update_response.text()
+                            logging.error(f"Update Failed ({update_status}): {update_text_response}")
+                            return False, update_text_response  # Ошибка обновления, возвращаем сообщение об ошибке
+                else:
+                    return False
+            else:
+                logging.error(f"Failed to check user existence ({response.status}): {await response.text()}")
+                return False
+
