@@ -546,12 +546,12 @@ async def get_config(call: types.CallbackQuery):
             if days >= 31:
                 reply_keyboard.add(
                     InlineKeyboardButton(f"{subs['name']} - {days // 30} мес." if subs['name'] else "Unnamed Rate",
-                                        callback_data=f'add_days_for_{subs["id"]}')
+                                        callback_data=f'g_conf_{subs["id"]}')
                 )
             else:
                 reply_keyboard.add(
                     InlineKeyboardButton(f"{subs['name']} - {days} дней" if subs['name'] else "Unnamed Rate",
-                                        callback_data=f'add_days_for_{subs["id"]}')
+                                        callback_data=f'g_conf_{subs["id"]}')
                 )
     await bot.send_message(call.from_user.id, "📱 Выберите подписку, для которой необходимо получить потерянный/удаленный файл", reply_markup=reply_keyboard)
 
