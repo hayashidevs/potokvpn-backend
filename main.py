@@ -20,11 +20,10 @@ from api_client import *
 import uuid
 
 key = config.Promik
-
 API_TOKEN = config.TELEGRAM_TOKEN
 YOOTOKEN = config.PAYMENTS_TOKEN
 
-urls = {'iphone': 'https://apps.apple.com/ru/app/wireguard/id1441195209', 'android': 'https://play.google.com/store/apps/details?id=com.wireguard.android&hl=en', 'macos': 'https://apps.apple.com/es/app/wireguard/id1451685025?mt=12', 'windows': 'https://download.wireguard.com/windows-client/wireguard-installer.exe'}
+urls = {'iphone': 'https://apps.apple.com/ru/app/amneziavpn/id1600529900?l=en-GB', 'android': 'https://play.google.com/store/apps/details?id=org.amnezia.vpn', 'macos': 'https://github.com/hayashidevs/potokvpn-client/releases/latest/download/PotokVPN.dmg', 'windows': 'https://github.com/hayashidevs/potokvpn-client/releases/latest/download/PotokVPN_x64.exe', 'linux': 'https://github.com/hayashidevs/potokvpn-client/releases/latest/download/PotokVPN_Linux_Installer.tar'}
 
 tgIDs = []
 
@@ -82,13 +81,13 @@ async def start(message: types.Message, state: FSMContext):
                 message.from_user.last_name
             )
             await message.answer(
-                f"{message.from_user.first_name}\nДобро пожаловать в [ поток 𝗩𝗣𝗡 ]\n🌐 Ваш надежный VPN сервис\n🌅 Следи за новостями в группе и будь в потоке @potok_you")
+                f"{message.from_user.first_name}\nДобро пожаловать в [ поток 𝗩𝗣𝗡 ]\n🌐 Ваш надежный VPN сервис\n🌅 Следи за новостями в группе и будь в потоке @potok_you", reply_markup=types.ReplyKeyboardRemove())
         else:
             await message.answer(
-                f"{message.from_user.first_name}\nС возвращением в [ поток 𝗩𝗣𝗡 ]\n🌐 Ваш надежный VPN сервис\n🌅 Следи за новостями в группе и будь в потоке @potok_you")
+                f"{message.from_user.first_name}\nС возвращением в [ поток 𝗩𝗣𝗡 ]\n🌐 Ваш надежный VPN сервис\n🌅 Следи за новостями в группе и будь в потоке @potok_you", reply_markup=types.ReplyKeyboardRemove())
     else:
         await message.answer(
-                f"{message.from_user.first_name}\nДобро пожаловать в [ поток 𝗩𝗣𝗡 ]\n🌐 Ваш надежный VPN сервис\n🌅 Следи за новостями в группе и будь в потоке @potok_you")
+                f"{message.from_user.first_name}\nДобро пожаловать в [ поток 𝗩𝗣𝗡 ]\n🌐 Ваш надежный VPN сервис\n🌅 Следи за новостями в группе и будь в потоке @potok_you", reply_markup=types.ReplyKeyboardRemove())
 
     await main_menu(message)
 
@@ -173,6 +172,11 @@ async def got_payment(message: types.Message, state: FSMContext):
                 print(f'Реферальный код не был указан, но подписка успешно добавлена: {e}')
 
             product_id = message.successful_payment.invoice_payload
+
+            subscription_id = data['subs_id']
+            config_name = subscription_id[:8]
+            count_subs = await get_subscription_count_by_telegram_id(message.from_user.id)
+            device_name = f'{message.from_user.first_name}_{count_subs + 1}'
             keyboard = InlineKeyboardMarkup(row_width=2)
             keyboard.add(
                 InlineKeyboardButton("Iphone", url=urls['iphone']),
@@ -180,9 +184,46 @@ async def got_payment(message: types.Message, state: FSMContext):
                 InlineKeyboardButton("MacOS", url=urls['macos']),
                 InlineKeyboardButton("Windows", url=urls['windows']),
             )
-            await message.answer(
-                    f"🔤 Введите название для новой подписки\n\nНапример: «iPhone Петр, MacBook Иван»", reply_markup=types.ReplyKeyboardRemove())
-            await Oform.NameDevice.set()
+            await message.reply(f'🔐 Ваша подписка успешно добавлена!', reply_markup=types.ReplyKeyboardRemove())
+            await message.reply(f'⤵️ Чтобы активировать [поток VPN], установите приложение WireGuard под Ваше устройство', reply_markup=keyboard)
+            try:
+                response = requests.post(f'{config.WGAPI_URL}/wireguard/add_user/', json={'subscription_id': subscription_id})
+                response_data = response.json()
+
+                print(f'Wireguard API response: {response_data}')
+
+                if response.status_code != 200 or 'config_content' not in response_data:
+                    await message.answer("Ошибка: не удалось добавить пользователя Wireguard.")
+                    return
+
+                config_file_text = response_data.get('config_content', '').replace(",::/128", "")
+
+                if not config_file_text:
+                    await message.answer("Ошибка: не удалось получить текст конфигурации.")
+                    return
+
+                config_file_path = f'configs/{subscription_id[:8]}.conf'
+                with open(config_file_path, 'w+') as config_file:
+                    config_file.write(config_file_text)
+
+                await bot.send_document(message.chat.id, open(config_file_path, 'rb'))
+                os.remove(config_file_path)
+
+                update_data = {
+                    'subscription_id': subscription_id,
+                    'config_name': config_name
+                }
+
+                response = requests.post(f'{config.DJANGO_API_URL}/api/update_subscription/', data=update_data)
+                print(response)
+            except Exception as e:
+                print(f'Error during Wireguard API request: {str(e)}')
+                await message.answer("Ошибка при запросе к API Wireguard.")
+
+            await update_name_subs(subscription_id, device_name)
+            await state.finish()
+            await main_menu(message)
+            
 
 
 
@@ -217,59 +258,6 @@ async def add_device(call: types.CallbackQuery):
     await Oform.Promo.set()
 
 
-@dp.message_handler(state=Oform.NameDevice)
-async def add_device_name(message: types.Message, state: FSMContext):
-    async with state.proxy() as data:
-        subscription_id = data['subs_id']
-        config_name = subscription_id[:8]
-        device_name = message.text
-        keyboard = InlineKeyboardMarkup(row_width=2)
-        keyboard.add(
-            InlineKeyboardButton("Iphone", url=urls['iphone']),
-            InlineKeyboardButton("Android", url=urls['android']),
-            InlineKeyboardButton("MacOS", url=urls['macos']),
-            InlineKeyboardButton("Windows", url=urls['windows']),
-        )
-        await message.reply(f'🔐 Ваша подписка успешно добавлена!', reply_markup=types.ReplyKeyboardRemove())
-        await message.reply(f'⤵️ Чтобы активировать [поток VPN], установите приложение WireGuard под Ваше устройство', reply_markup=keyboard)
-        try:
-            response = requests.post(f'{config.WGAPI_URL}/wireguard/add_user/', json={'subscription_id': subscription_id})
-            response_data = response.json()
-
-            print(f'Wireguard API response: {response_data}')
-
-            if response.status_code != 200 or 'config_content' not in response_data:
-                await message.answer("Ошибка: не удалось добавить пользователя Wireguard.")
-                return
-
-            config_file_text = response_data.get('config_content', '').replace(",::/128", "")
-
-            if not config_file_text:
-                await message.answer("Ошибка: не удалось получить текст конфигурации.")
-                return
-
-            config_file_path = f'configs/{subscription_id[:8]}.conf'
-            with open(config_file_path, 'w+') as config_file:
-                config_file.write(config_file_text)
-
-            await bot.send_document(message.chat.id, open(config_file_path, 'rb'))
-            os.remove(config_file_path)
-
-            update_data = {
-                'subscription_id': subscription_id,
-                'config_name': config_name
-            }
-
-            response = requests.post(f'{config.DJANGO_API_URL}/api/update_subscription/', data=update_data)
-            print(response)
-        except Exception as e:
-            print(f'Error during Wireguard API request: {str(e)}')
-            await message.answer("Ошибка при запросе к API Wireguard.")
-
-        await update_name_subs(subscription_id, device_name)
-        await state.finish()
-        await main_menu(message)
-
 
 
 async def main_menu(message: types.Message):
@@ -294,8 +282,12 @@ async def main_menu_call(call: types.CallbackQuery):
         InlineKeyboardButton("Инструкция", callback_data='instructions'),
         InlineKeyboardButton("Личный Кабинет", callback_data='account'),
         InlineKeyboardButton("Оформить подписку", callback_data='add_device'),
-        InlineKeyboardButton("Бесплатный доступ", callback_data='test_subscription')
     )
+
+    used_test, _ = await is_test_subscription_used(call.from_user.id)
+    if not used_test:
+        keyboard.add(InlineKeyboardButton("Бесплатный доступ", callback_data='test_subscription'))
+
     await bot.send_message(call.from_user.id, "🗂️ Выберите пункт меню:", reply_markup=keyboard)
 
 
@@ -402,27 +394,31 @@ async def get_ref_code(message: types.Message, state: FSMContext):
         await state.finish()
     except:
         pass
-    client_id = await get_client_id_from_telegram_id(message.from_user.id)
-    if not client_id:
-        await message.reply("Не удалось найти ваш аккаунт.")
-        return
+    unical_ref_code = get_referral_id_by_telegram_id(message.from_user.id)
+    if unical_ref_code is None:
+        unical_ref_code = await get_client_id_from_telegram_id(message.from_user.id)
+        if not unical_ref_code:
+            await message.reply("Не удалось найти ваш аккаунт.")
+            return
     
     inline_keyboard = InlineKeyboardMarkup()
     inline_keyboard.add(InlineKeyboardButton("Назад в личный кабинет", callback_data='account'))
-    await bot.send_message(message.from_user.id, f"🎟️ Ваш реферальный код: <pre>{client_id}</pre>\nС его помощью Вы можете пригласить неограниченное количество друзей и получить до 30 дней бесплатного доступа за каждого пользователя\n⤵️ Скопируйте код и отправьте другу", reply_markup=inline_keyboard, parse_mode="HTML")
+    await bot.send_message(message.from_user.id, f"🎟️ Ваш реферальный код: <pre>{unical_ref_code}</pre>\nС его помощью Вы можете пригласить неограниченное количество друзей и получить до 30 дней бесплатного доступа за каждого пользователя\n⤵️ Скопируйте код и отправьте другу", reply_markup=inline_keyboard, parse_mode="HTML")
 
 
 
 @dp.callback_query_handler(text='get_ref_code')
 async def get_ref_code(call: types.CallbackQuery):
-    client_id = await get_client_id_from_telegram_id(call.from_user.id)
-    if not client_id:
-        await call.message.edit_text("Не удалось найти ваш аккаунт.")
-        return
+    unical_ref_code = await get_referral_id_by_telegram_id(call.from_user.id)
+    if unical_ref_code is None:
+        unical_ref_code = await get_client_id_from_telegram_id(call.from_user.id)
+        if not unical_ref_code:
+            await call.message.reply("Не удалось найти ваш аккаунт.")
+            return
     
     inline_keyboard = InlineKeyboardMarkup()
     inline_keyboard.add(InlineKeyboardButton("Назад в личный кабинет", callback_data='account'))
-    await bot.send_message(call.from_user.id, f"🎟️ Ваш реферальный код: <pre>{client_id}</pre>\nС его помощью Вы можете пригласить неограниченное количество друзей и получить до 30 дней бесплатного доступа за каждого пользователя\n⤵️ Скопируйте код и отправьте другу", reply_markup=inline_keyboard, parse_mode="HTML")
+    await bot.send_message(call.from_user.id, f"🎟️ Ваш реферальный код: <pre>{unical_ref_code}</pre>\nС его помощью Вы можете пригласить неограниченное количество друзей и получить до 30 дней бесплатного доступа за каждого пользователя\n⤵️ Скопируйте код и отправьте другу", reply_markup=inline_keyboard, parse_mode="HTML")
     
 
 @dp.message_handler(Command("account"), state='*')
@@ -522,10 +518,17 @@ async def change_plan(call: types.CallbackQuery):
         datestart = subs['datestart']
         dateend = subs['dateend']
         days = (datetime.strptime(dateend, "%Y-%m-%dT%H:%M:%SZ") - datetime.strptime(datestart, "%Y-%m-%dT%H:%M:%SZ")).days
-        reply_keyboard.add(
-            InlineKeyboardButton(f"{subs['name']} - {days // 30} мес." if subs['name'] else "Unnamed Rate",
-                                 callback_data=f'add_days_for_{subs["id"]}')
-        )
+
+        if days >= 31:
+            reply_keyboard.add(
+                InlineKeyboardButton(f"{subs['name']} - {days // 30} мес." if subs['name'] else "Unnamed Rate",
+                                    callback_data=f'add_days_for_{subs["id"]}')
+            )
+        else:
+            reply_keyboard.add(
+                InlineKeyboardButton(f"{subs['name']} - {days} дней" if subs['name'] else "Unnamed Rate",
+                                    callback_data=f'add_days_for_{subs["id"]}')
+            )
     await bot.send_message(call.from_user.id, "🔀 Выберите подписку для которой хотите изменить тарифный план\n✔️ Текущие дни сохраняются с добавлением новых", reply_markup=reply_keyboard)
 
 
@@ -540,10 +543,16 @@ async def get_config(call: types.CallbackQuery):
             datestart = subs['datestart']
             dateend = subs['dateend']
             days = (datetime.strptime(dateend, "%Y-%m-%dT%H:%M:%SZ") - datetime.strptime(datestart, "%Y-%m-%dT%H:%M:%SZ")).days
-            reply_keyboard.add(
-                InlineKeyboardButton(f"{subs['name']} - {days // 30} мес." if subs['name'] else "Unnamed Rate",
-                                     callback_data=f'g_conf_{subs["id"]}')
-            )
+            if days >= 31:
+                reply_keyboard.add(
+                    InlineKeyboardButton(f"{subs['name']} - {days // 30} мес." if subs['name'] else "Unnamed Rate",
+                                        callback_data=f'add_days_for_{subs["id"]}')
+                )
+            else:
+                reply_keyboard.add(
+                    InlineKeyboardButton(f"{subs['name']} - {days} дней" if subs['name'] else "Unnamed Rate",
+                                        callback_data=f'add_days_for_{subs["id"]}')
+                )
     await bot.send_message(call.from_user.id, "📱 Выберите подписку, для которой необходимо получить потерянный/удаленный файл", reply_markup=reply_keyboard)
 
 
@@ -704,10 +713,9 @@ async def process_device_type(message: types.Message, state: FSMContext):
     await main_menu(message)
 
 
-
-
 @dp.callback_query_handler(text='support', state='*')
 async def test_subscription(call: types.CallbackQuery, state: FSMContext):
+    state.finish()
     inline_button = types.InlineKeyboardButton(text="Обратиться в поддержку", url="https://t.me/potok_support")
     inline_button2 = types.InlineKeyboardButton(text="Назад", callback_data='back_to_main_menu')
 
@@ -717,6 +725,20 @@ async def test_subscription(call: types.CallbackQuery, state: FSMContext):
     keyboard.add(inline_button2)
 
     await call.message.answer(text="ℹ️ Перейдите по ссылке, чтобы связаться с технической поддержкой", reply_markup=keyboard)
+
+
+@dp.message_handler(Command("support"), state='*')
+async def test_subscription(message: types.Message, state: FSMContext):
+    state.finish()
+    inline_button = types.InlineKeyboardButton(text="Обратиться в поддержку", url="https://t.me/potok_support")
+    inline_button2 = types.InlineKeyboardButton(text="Назад", callback_data='back_to_main_menu')
+
+    # Создаем клавиатуру и добавляем кнопку
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(inline_button)
+    keyboard.add(inline_button2)
+
+    await message.answer(text="ℹ️ Перейдите по ссылке, чтобы связаться с технической поддержкой", reply_markup=keyboard)
 
 
 @dp.message_handler(state=FormStatesTestSubs.PROMO)

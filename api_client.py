@@ -27,6 +27,57 @@ async def check_user_registration(telegram_id):
                 return True, exists
             else:
                 return False, False
+            
+
+async def get_referral_id_by_telegram_id(telegram_id):
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"{config.DJANGO_API_URL}/api/clients/",
+                                   params={'telegramid': telegram_id}) as response:
+                if response.status != 200:
+                    print(f"Failed to get clients: {response.status}")
+                    return None
+
+                clients = await response.json()
+                print(f"Clients response: {clients}")
+                if not clients:
+                    print("No clients found")
+                    return None
+
+                for client in clients:
+                    if client['telegramid'] == telegram_id:
+                        return client['referral_id']
+
+                print("No matching client found for the given Telegram ID")
+                return None
+    except Exception as e:
+        print(f"API request error: {str(e)}")
+        return None
+    
+
+async def get_subscription_count_by_telegram_id(telegram_id):
+    """Получить количество подписок клиента по его telegram_id."""
+    try:
+        client_id = await get_client_id_from_telegram_id(telegram_id)
+        if not client_id:
+            return "No valid client ID found for the given Telegram ID."
+
+        async with aiohttp.ClientSession() as session:
+            url = f"{config.DJANGO_API_URL}/api/subscriptions/"
+            params = {'clientid': client_id}
+            async with session.get(url, params=params) as response:
+                if response.status != 200:
+                    print(f"Failed to get subscriptions: {response.status}")
+                    return f"Failed to get subscriptions with status {response.status}: {await response.text()}"
+
+                subscriptions = await response.json()
+                subscription_count = len(subscriptions)
+                return subscription_count
+    except Exception as e:
+        print(f"API request error: {str(e)}")
+        return f"An unexpected error occurred: {str(e)}"
+
+
 
 
 async def register_user(telegram_id, username, first_name, last_name):
