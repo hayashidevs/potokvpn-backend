@@ -133,40 +133,41 @@ async def got_payment(message: types.Message, state: FSMContext):
                 return
 
             try:
-                chatid = data.get('chatid')
-                update_result = await update_usedref(message.from_user.id)
-                bonus_days = await get_bonus_days_from_ratename(data['tariffname'])
-                if bonus_days is None:
-                    await message.answer("Ошибка: не удалось получить бонусные дни для тарифа.")
-                    return
-                print(f"Bonus days for rate '{data['tariffname']}': {bonus_days}")
+                if data['is_referral'] == True:
+                    chatid = data.get('chatid')
+                    update_result = await update_usedref(message.from_user.id)
+                    bonus_days = await get_bonus_days_from_ratename(data['tariffname'])
+                    if bonus_days is None:
+                        await message.answer("Ошибка: не удалось получить бонусные дни для тарифа.")
+                        return
+                    print(f"Bonus days for rate '{data['tariffname']}': {bonus_days}")
 
-                client_subscriptions = await get_subscriptions_by_client_id(referral_client_id)
-                if isinstance(client_subscriptions, str):
-                    await message.answer(client_subscriptions, reply_markup=inline_keyboard)
-                    return
+                    client_subscriptions = await get_subscriptions_by_client_id(referral_client_id)
+                    if isinstance(client_subscriptions, str):
+                        await message.answer(client_subscriptions, reply_markup=inline_keyboard)
+                        return
 
-                await state.update_data(subscriptions=client_subscriptions)
+                    await state.update_data(subscriptions=client_subscriptions)
 
-                reply_keyboard_for_referral = InlineKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-                for subscription in client_subscriptions:
-                    reply_keyboard_for_referral.add(
-                        InlineKeyboardButton(subscription['name'] if subscription['name'] else "Unnamed Subscription",
-                                             callback_data=f'add_subs_{subscription["id"]}///{bonus_days}'))
+                    reply_keyboard_for_referral = InlineKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+                    for subscription in client_subscriptions:
+                        reply_keyboard_for_referral.add(
+                            InlineKeyboardButton(subscription['name'] if subscription['name'] else "Unnamed Subscription",
+                                                callback_data=f'add_subs_{subscription["id"]}///{bonus_days}'))
 
-                await bot.send_message(
-                    referral_client_telegram_id,
-                    f'🔤 Ваш друг воспользовался Вашим реферальным кодом\n📲 Выберите подписку, на которое мы добавим Вам {bonus_days} дней доступа',
-                    reply_markup=reply_keyboard_for_referral
-                )
+                    await bot.send_message(
+                        referral_client_telegram_id,
+                        f'🔤 Ваш друг воспользовался Вашим реферальным кодом\n📲 Выберите подписку, на которое мы добавим Вам {bonus_days} дней доступа',
+                        reply_markup=reply_keyboard_for_referral
+                    )
 
-                print(f"Updating referred_by for client: {message.from_user.id}, referred_by: {referral_client_id}")
-                result = await add_referred_by(message.from_user.id, referral_client_id)
-                print(f"Referral update result: {result}")
+                    print(f"Updating referred_by for client: {message.from_user.id}, referred_by: {referral_client_id}")
+                    result = await add_referred_by(message.from_user.id, referral_client_id)
+                    print(f"Referral update result: {result}")
 
-                if not result:
-                    await message.answer('Ошибка при обновлении реферального кода.')
-                    return
+                    if not result:
+                        await message.answer('Ошибка при обновлении реферального кода.')
+                        return
 
             except Exception as e:
                 print(f'Реферальный код не был указан, но подписка успешно добавлена: {e}')
@@ -176,6 +177,7 @@ async def got_payment(message: types.Message, state: FSMContext):
             subscription_id = data['subs_id']
             config_name = subscription_id[:8]
             count_subs = await get_subscription_count_by_telegram_id(message.from_user.id)
+            print(count_subs)
             device_name = f'{message.from_user.first_name}_{count_subs + 1}'
             keyboard = InlineKeyboardMarkup(row_width=2)
             keyboard.add(
