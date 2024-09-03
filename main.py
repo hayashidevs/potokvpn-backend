@@ -18,6 +18,8 @@ import api_client
 import config
 from api_client import *
 import uuid
+import yaml
+from utils import setup_logging, log
 
 key = config.Promik
 API_TOKEN = config.TELEGRAM_TOKEN
@@ -33,6 +35,20 @@ bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 dp.middleware.setup(LoggingMiddleware())
+
+# Load additional config if needed
+config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.yaml')
+with open(config_path, 'r') as file:
+    config = yaml.safe_load(file)
+
+# Load paths from config.yaml
+data_dir = config['data_storage']['data_directory']
+logs_dir = config['data_storage']['logs_directory']
+log_filename = config['data_storage']['log_filename']
+
+# Ensure data and logs directories exist
+os.makedirs(data_dir, exist_ok=True)
+os.makedirs(logs_dir, exist_ok=True)
 
 
 # States
@@ -130,6 +146,7 @@ async def got_payment(message: types.Message, state: FSMContext):
             else:
                 print("UUID not found in response.")
                 await message.answer("Ошибка: не удалось найти UUID в ответе.")
+                log(subscription_id, data, config_name, update_payload, "Ошибка: не удалось найти UUID в ответе.", response, uuid_match )
                 return
 
             try:
@@ -167,10 +184,12 @@ async def got_payment(message: types.Message, state: FSMContext):
 
                     if not result:
                         await message.answer('Ошибка при обновлении реферального кода.')
+                        log(result, referral_client_telegram_id, client_subscriptions, "Ошибка при обновлении реферального кода." )
                         return
 
             except Exception as e:
                 print(f'Реферальный код не был указан, но подписка успешно добавлена: {e}')
+                log( f"Реферальный код не был указан, но подписка успешно добавлена: {e}" )
 
             product_id = message.successful_payment.invoice_payload
 
@@ -193,15 +212,18 @@ async def got_payment(message: types.Message, state: FSMContext):
                 response_data = response.json()
 
                 print(f'Wireguard API response: {response_data}')
+                log(f'Wireguard API response: {response_data}')
 
                 if response.status_code != 200 or 'config_content' not in response_data:
                     await message.answer("Ошибка: не удалось добавить пользователя Wireguard.")
+                    log(f"Ошибка: не удалось добавить пользователя Wireguard.", response.status_code, 'config_content', response_data )
                     return
 
                 config_file_text = response_data.get('config_content', '').replace(",::/128", "")
 
                 if not config_file_text:
                     await message.answer("Ошибка: не удалось получить текст конфигурации.")
+                    log("Ошибка: не удалось получить текст конфигурации:", config_file_text)
                     return
 
                 config_file_path = f'configs/{subscription_id[:8]}.conf'
@@ -220,6 +242,7 @@ async def got_payment(message: types.Message, state: FSMContext):
                 print(response)
             except Exception as e:
                 print(f'Error during Wireguard API request: {str(e)}')
+                log(f'Error during Wireguard API request: {str(e)}')
                 await message.answer("Ошибка при запросе к API Wireguard.")
 
             await update_name_subs(subscription_id, device_name)
@@ -243,10 +266,12 @@ async def process_add_subs(call: types.CallbackQuery, state: FSMContext):
             await call.message.answer(f'Подписка успешно продлена на {bonus_days} дней!')
         else:
             await call.message.answer(f'Ошибка продления подписки: {result}')
+            log(f'Ошибка продления подписки: {result}')
 
         await state.finish()
     except Exception as e:
         print(f"Exception in process_add_subs: {e}")
+        log(f"Exception in process_add_subs: {e}")
         await call.message.answer("Произошла ошибка при продлении подписки. Пожалуйста, попробуйте еще раз.")
         await state.finish()
 
@@ -400,6 +425,7 @@ async def get_ref_code(message: types.Message, state: FSMContext):
     if unical_ref_code is None:
         unical_ref_code = await get_client_id_from_telegram_id(message.from_user.id)
         if not unical_ref_code:
+            log("Account not found", unical_ref_code)
             await message.reply("Не удалось найти ваш аккаунт.")
             return
     
@@ -415,6 +441,7 @@ async def get_ref_code(call: types.CallbackQuery):
     if unical_ref_code is None:
         unical_ref_code = await get_client_id_from_telegram_id(call.from_user.id)
         if not unical_ref_code:
+            log("Account not found", unical_ref_code)
             await call.message.reply("Не удалось найти ваш аккаунт.")
             return
     
@@ -440,6 +467,7 @@ async def my_devices(message: types.Message, state: FSMContext):
 
     client_id = await get_client_id_from_telegram_id(message.from_user.id)
     if not client_id:
+        log("Account not found ", client_id)
         await message.reply("Не удалось найти ваш аккаунт.", reply_markup=keyboard)
         return
 
@@ -483,6 +511,7 @@ async def my_devices(call: types.CallbackQuery, state: FSMContext):
 
     client_id = await get_client_id_from_telegram_id(call.from_user.id)
     if not client_id:
+        log("Account not found ", client_id)
         await call.message.edit_text("Не удалось найти ваш аккаунт.", reply_markup=keyboard)
         return
 
@@ -596,6 +625,7 @@ async def process_promo_code(message: types.Message, state: FSMContext):
         else:
             client = await find_client_by_referral_id(client_input)
             if client == None:
+                log("Client Referral code did not found: ", client)
                 await message.answer("��� Не удалось найти клиента с указанным реферальным кодом", reply_markup=inline_keyboard)
                 await Oform.Promo.set()
                 return
@@ -626,7 +656,9 @@ async def process_promo_code(message: types.Message, state: FSMContext):
 
     except BadRequest as e:
         print(f"BadRequest Exception: {e}")
+        log(f"BadRequest Exception: {e}")
     except Exception as e:
+        log(f"Exception: {e}")
         print(f"Exception: {e}")
 
 
@@ -647,6 +679,7 @@ async def process_subscription_selection(message: types.Message, state: FSMConte
         )
 
         if not selected_subscription:
+            log("Selected subscription not found: ", selected_subscription)
             await message.answer("Выбранная подписка не найдена. Пожалуйста, выберите еще раз.")
             return
 
@@ -660,6 +693,7 @@ async def process_subscription_selection(message: types.Message, state: FSMConte
         await state.finish()
     except Exception as e:
         print(f"Exception in process_subscription_selection: {e}")
+        log(f"Exception in process_subscription_selection: {e}")
         await message.answer("Произошла ошибка. Пожалуйста, попробуйте еще раз.")
 
 
@@ -699,6 +733,7 @@ async def process_device_type(message: types.Message, state: FSMContext):
         response = await api_client.add_device(message.from_user.id, 'test rate', 'Тестовая подписка', datetime.now().strftime("%Y-%m-%dT%H:%M:%S"))
 
         if not isinstance(response, str):
+            log("Error while creating subscription: ", isinstance, response, promo)
             await message.answer('Ошибка при создании подписки. Попробуйте снова позже.')
             await state.finish()
             return
@@ -709,6 +744,7 @@ async def process_device_type(message: types.Message, state: FSMContext):
             uuid_obj = uuid.UUID(subscription_id)
         except ValueError:
             await message.answer('Ошибка: неверный формат UUID.')
+            log("Invalid UUID format: ", uuid_obj)
             await state.finish()
             return
 
@@ -719,6 +755,7 @@ async def process_device_type(message: types.Message, state: FSMContext):
         print(f"Response from WireGuard API: {wg_response.status_code} - {wg_response.text}")
 
         if wg_response.status_code != 200:
+            log("Error while accessing Wireguard API, try again later: ", wg_response)
             await message.answer('Ошибка при обращении к API WireGuard. Попробуйте снова позже.')
             await state.finish()
             return
@@ -728,6 +765,7 @@ async def process_device_type(message: types.Message, state: FSMContext):
         config_file_text = config_file_text.replace(",::/128", "")
 
         if not config_file_text:
+            log("Error: Cannot get Wireguard content: ", config_file_text)
             await message.answer('Ошибка: не удалось получить конфигурацию WireGuard.')
             await state.finish()
             return
@@ -844,6 +882,7 @@ async def midnight_task():
     async with aiohttp.ClientSession() as session:
         async with session.get(f"{config.DJANGO_API_URL}/api/subscriptions/") as response:
             if response.status != 200:
+                log(f"Failed to get subscriptions with status {response.status}: {await response.text()}")
                 print(f"Failed to get subscriptions: {response.status}")
                 return f"Failed to get subscriptions with status {response.status}: {await response.text()}"
 
@@ -870,6 +909,7 @@ async def midnight_task():
                     )
                     print("Message sent successfully.")
                 except Exception as e:
+                    log(f"Failed to send message: {e}")
                     print(f"Failed to send message: {e}")
 
             elif time_difference.days == 1:
@@ -887,6 +927,7 @@ async def midnight_task():
                     )
                     print("Message sent successfully.")
                 except Exception as e:
+                    log(f"Failed to send message: {e}")
                     print(f"Failed to send message: {e}")
             elif time_difference.days == 0:
                 telegram_id = await get_telegram_id_for_client_id(i['clientid'])
@@ -903,6 +944,7 @@ async def midnight_task():
                     )
                     print("Message sent successfully.")
                 except Exception as e:
+                    (f"Failed to send message: {e}")
                     print(f"Failed to send message: {e}")
 
 
@@ -917,6 +959,9 @@ async def check_time():
 
 if __name__ == '__main__':
     import asyncio
+    # Initialize logging with the log file from config.yaml
+    log_path = os.path.join(logs_dir, log_filename)
+    setup_logging(log_path)
 
     loop = asyncio.get_event_loop()
     loop.create_task(dp.start_polling())

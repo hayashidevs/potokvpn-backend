@@ -4,6 +4,19 @@ import aiohttp
 import datetime
 from datetime import datetime, timedelta
 import logging
+import yaml
+from utils import setup_logging, log
+
+# Load additional config if needed
+config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.yaml')
+with open(config_path, 'r') as file:
+    config = yaml.safe_load(file)
+
+# Load paths from config.yaml
+data_dir = config['data_storage']['data_directory']
+logs_dir = config['data_storage']['logs_directory']
+log_filename = config['data_storage']['log_filename']
+
 
 def handle_response(response):
     if response.status_code in [200, 201]:
@@ -49,6 +62,7 @@ async def get_referral_id_by_telegram_id(telegram_id):
                         return client['referral_id']
 
                 print("No matching client found for the given Telegram ID")
+                log("No matching client found for the given Telegram ID: ", client)
                 return None
     except Exception as e:
         print(f"API request error: {str(e)}")
@@ -60,6 +74,7 @@ async def get_subscription_count_by_telegram_id(telegram_id):
     try:
         client_id = await get_client_id_from_telegram_id(telegram_id)
         if not client_id:
+            log("No valid client ID found for the given Telegram ID.: ", client_id)
             return "No valid client ID found for the given Telegram ID."
 
         async with aiohttp.ClientSession() as session:
@@ -68,6 +83,7 @@ async def get_subscription_count_by_telegram_id(telegram_id):
             async with session.get(url, params=params) as response:
                 if response.status != 200:
                     print(f"Failed to get subscriptions: {response.status}")
+                    log(f"Failed to get subscriptions: {response.status}")
                     return f"Failed to get subscriptions with status {response.status}: {await response.text()}"
 
                 subscriptions = await response.json()
@@ -75,6 +91,7 @@ async def get_subscription_count_by_telegram_id(telegram_id):
                 return subscription_count
     except Exception as e:
         print(f"API request error: {str(e)}")
+        log(f"API request error: {str(e)}")
         return f"An unexpected error occurred: {str(e)}"
 
 
@@ -106,6 +123,7 @@ async def register_user(telegram_id, username, first_name, last_name):
                     return False, text_response  # Error, return error message
         except Exception as e:
             logging.error(f"Exception during registration: {e}")
+            log(f"Exception during registration: {e}")
             return False, str(e)
 
 
@@ -114,11 +132,13 @@ async def get_user_details(telegram_id):
         client_id = await get_client_id_from_telegram_id(telegram_id)
         if not client_id:
             return "No valid client ID found for the given Telegram ID."
+        log("No valid client ID found for the given Telegram ID.: ", client_id)
 
         async with aiohttp.ClientSession() as session:
             async with session.get(f"{config.DJANGO_API_URL}/api/clients/{client_id}/") as response:
                 if response.status != 200:
                     print(f"Failed to get client details: {response.status}")
+                    log(f"Failed to get client details: {response.status}")
                     return f"Failed to get client details with status {response.status}: {await response.text()}"
 
                 client_details = await response.json()
@@ -128,6 +148,7 @@ async def get_user_details(telegram_id):
                 return referred_by
     except Exception as e:
         print(f"API request error: {str(e)}")
+        logt(f"API request error: {str(e)}")
         return f"An unexpected error occurred: {str(e)}"
 
 
@@ -138,12 +159,14 @@ async def get_client_id_from_telegram_id(telegram_id):
                                    params={'telegramid': telegram_id}) as response:
                 if response.status != 200:
                     print(f"Failed to get clients: {response.status}")
+                    log(f"Failed to get clients: {response.status}")
                     return None
 
                 clients = await response.json()
                 print(f"Clients response: {clients}")
                 if not clients:
                     print("No clients found")
+                    log("No clients found")
                     return None
 
                 for client in clients:
@@ -151,9 +174,11 @@ async def get_client_id_from_telegram_id(telegram_id):
                         return client['id']
 
                 print("No matching client found for the given Telegram ID")
+                log("No matching client found for the given Telegram ID")
                 return None
     except Exception as e:
         print(f"API request error: {str(e)}")
+        log(f"API request error: {str(e)}")
         return None
     
 
@@ -164,10 +189,12 @@ async def get_rate_id_from_ratename(name):
                                    params={'name': name}) as response:
                 if response.status != 200:
                     print(f"Failed to get rates: {response.status}")
+                    log(f"Failed to get rates: {response.status}")
                     return None
 
                 rates = await response.json()
                 print(f"Clients response: {rates}")
+                log(f"Clients response: {rates}")
                 if not rates:
                     print("No clients found")
                     return None
@@ -177,9 +204,11 @@ async def get_rate_id_from_ratename(name):
                         return rate['id']
 
                 print("No matching client found for the given Telegram ID")
+                log("No matching client found for the given Telegram ID")
                 return None
     except Exception as e:
         print(f"API request error: {str(e)}")
+        log(f"API request error: {str(e)}")
         return None
 
 async def get_bonus_days_from_ratename(rate_name):
@@ -189,29 +218,36 @@ async def get_bonus_days_from_ratename(rate_name):
             async with session.get(url) as response:
                 if response.status != 200:
                     raise ValueError(f"Failed to fetch rate details: {response.status}")
+                log(f"Failed to fetch rate details: {response.status}")
                 
                 rate_details = await response.json()
                 print(f"Raw rate details fetched for {rate_name}: {rate_details}")  # Detailed debug statement
+                log(f"Raw rate details fetched for {rate_name}: {rate_details}") 
 
                 # Ensure the response is a list and contains at least one item
                 if not isinstance(rate_details, list) or not rate_details:
                     raise ValueError(f"Rate details are empty or not a list for rate: {rate_name}")
+                log(f"Rate details are empty or not a list for rate: {rate_name}")
 
                 # Access the first item in the list
                 rate_info = rate_details[0]
                 print(f"Parsed rate info for {rate_name}: {rate_info}")  # Detailed debug statement
+                log(f"Parsed rate info for {rate_name}: {rate_info}")
 
                 # Fetch the bonus_days from the rate info
                 bonus_days = rate_info.get('bonus_days', None)
                 print(f"Bonus days fetched for rate {rate_name}: {bonus_days}")  # Detailed debug statement
+                log(f"Bonus days fetched for rate {rate_name}: {bonus_days}") 
 
                 if bonus_days is None:
                     print(f"Bonus days is None for rate: {rate_name}")
+                    log(f"Bonus days is None for rate: {rate_name}")
                     return None
                 
                 return bonus_days
     except Exception as e:
         print(f"Error fetching bonus days: {e}")
+        log(f"Error fetching bonus days: {e}")
         return None
 
     
@@ -221,12 +257,15 @@ async def get_days_from_ratename(name):
             async with session.get(f"{config.DJANGO_API_URL}/api/rates/", params={'name': name}) as response:
                 if response.status != 200:
                     print(f"Failed to get rates: {response.status}")
+                    log(f"Failed to get rates: {response.status}")
                     return None
 
                 rates = await response.json()
                 print(f"Rates response: {rates}")
+                log(f"Rates response: {rates}")
                 if not rates:
                     print("No rates found")
+                    log("No rates found")
                     return None
 
                 for rate in rates:
@@ -234,9 +273,11 @@ async def get_days_from_ratename(name):
                         return rate['dayamount']  # Ensure you are returning the correct field
 
                 print("No matching rate found for the given name")
+                log("No matching rate found for the given name")
                 return None
     except Exception as e:
         print(f"API request error: {str(e)}")
+        log(f"API request error: {str(e)}")
         return None
 
 
@@ -252,10 +293,12 @@ async def update_usedref(telegram_id):
                                      json={'usedref': True}) as response:
                 if response.status != 200:
                     print(f"Failed to update client usedref: {response.status}")
+                    log(f"Failed to update client usedref: {response.status}")
                     return f"Failed to update client usedref with status {response.status}: {await response.text()}"
                 return "Client usedref updated successfully!"
     except Exception as e:
         print(f"API request error: {str(e)}")
+        log(f"API request error: {str(e)}")
         return f"An unexpected error occurred: {str(e)}"
 
 
@@ -322,16 +365,19 @@ async def get_subscriptions_by_client_id(client_id):
                                    params={'clientid': client_id}) as response:
                 if response.status != 200:
                     print(f"Failed to get subscriptions: {response.status}")
+                    log(f"Failed to get subscriptions: {response.status}")
                     return f"Failed to get subscriptions with status {response.status}: {await response.text()}"
 
                 subscriptions = await response.json()
                 print(f"Subscriptions response: {subscriptions}")
+                log(f"Subscriptions response: {subscriptions}")
                 if not subscriptions:
                     return []
 
                 return [subscription for subscription in subscriptions if subscription['clientid'] == client_id]
     except Exception as e:
         print(f"API request error: {str(e)}")
+        log(f"API request error: {str(e)}")
         return f"An unexpected error occurred: {str(e)}"
 
 
@@ -342,12 +388,15 @@ async def get_telegram_id_for_client_id(client_id):
                                    params={'id': client_id}) as response:
                 if response.status != 200:
                     print(f"Failed to get clients: {response.status}")
+                    log(f"Failed to get clients: {response.status}")
                     return None
 
                 clients = await response.json()
                 print(f"Clients response: {clients}")
+                log(f"Clients response: {clients}")
                 if not clients:
                     print("No clients found")
+                    log("No clients found")
                     return None
 
                 for client in clients:
@@ -355,9 +404,11 @@ async def get_telegram_id_for_client_id(client_id):
                         return client['telegramid']
 
                 print("No matching client found for the given Telegram ID")
+                log("No matching client found for the given Telegram ID")
                 return None
     except Exception as e:
         print(f"API request error: {str(e)}")
+        log(f"API request error: {str(e)}")
         return None
 
 
@@ -390,6 +441,7 @@ async def add_referred_by(telegram_id, referral_input):
         client_id = await get_client_id_from_telegram_id(telegram_id)
         if not client_id:
             print(f"No valid client ID found for the given Telegram ID: {telegram_id}")
+            log(f"No valid client ID found for the given Telegram ID: {telegram_id}")
             return False
 
         # First, try to find the client by referral_id
@@ -401,12 +453,14 @@ async def add_referred_by(telegram_id, referral_input):
         
         if isinstance(referred_by_client, str) or not referred_by_client:
             print("Referral input is invalid")
+            log("Referral input is invalid")
             return False
 
         referred_by_id = referred_by_client['id']
         
         if client_id == referred_by_id:
             print("Client ID and referred_by ID are the same, cannot self-refer")
+            log("Client ID and referred_by ID are the same, cannot self-refer")
             return False
 
         async with aiohttp.ClientSession() as session:
@@ -415,6 +469,7 @@ async def add_referred_by(telegram_id, referral_input):
             async with session.patch(patch_url, json=payload) as response:
                 if response.status != 200:
                     print(f"Failed to update client referred_by: {response.status}")
+                    log(f"Failed to update client referred_by: {response.status}")
                     return False
                 return True
     except Exception as e:
@@ -430,6 +485,7 @@ async def someone_used_referral(client_id):
                     #error_message = f"Failed to find client by client_id with status {response.status}: {await response.text()}"
                     error_message = f"🚫 Указан неверный реферальный код Вашего друга"
                     print(error_message)
+                    log(error_message)
                     return error_message
 
                 client = await response.json()
