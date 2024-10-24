@@ -780,6 +780,54 @@ async def process_device_type(message: types.Message, state: FSMContext):
 
         await state.finish()
         await main_menu(message)
+    elif get_uniqe_codes_and_update(promo):
+        await update_test_subscription_used(message.from_user.id)  # Update the UsedTestSubscription field
+        response = await api_client.add_device(message.from_user.id, 'free_sub', 'Подарочная подписка', datetime.now().strftime("%Y-%m-%dT%H:%M:%S"))
+
+        if not isinstance(response, str):
+            await message.answer('Ошибка при создании подписки. Попробуйте снова позже.')
+            await state.finish()
+            return
+
+        subscription_id = response
+
+        try:
+            uuid_obj = uuid.UUID(subscription_id)
+        except ValueError:
+            await message.answer('Ошибка: неверный формат UUID.')
+            await state.finish()
+            return
+
+        wg_payload = {'subscription_id': str(uuid_obj)}
+        print(f"Request to WireGuard API: {wg_payload}")
+
+        wg_response = requests.post(f'{config.WGAPI_URL}/wireguard/add_user/', json=wg_payload)
+        print(f"Response from WireGuard API: {wg_response.status_code} - {wg_response.text}")
+
+        if wg_response.status_code != 200:
+            await message.answer('Ошибка при обращении к API WireGuard. Попробуйте снова позже.')
+            await state.finish()
+            return
+
+        wg_response_data = wg_response.json()
+        config_file_text = wg_response_data.get('config_content')
+        config_file_text = config_file_text.replace(",::/128", "")
+
+        if not config_file_text:
+            await message.answer('Ошибка: не удалось получить конфигурацию WireGuard.')
+            await state.finish()
+            return
+
+        config_file_path = f'configs/{subscription_id[:8]}.conf'
+        with open(config_file_path, 'w') as config_file:
+            config_file.write(config_file_text)
+
+        await bot.send_document(message.chat.id, open(config_file_path, 'rb'))
+        os.remove(config_file_path)
+        await message.answer('Ваша тестовая подписка успешно создана!')
+
+        await state.finish()
+        await main_menu(message)
     else:
         await message.answer('🚫 Неверное кодовое слово либо истек срок его использования')
         await main_menu(message)

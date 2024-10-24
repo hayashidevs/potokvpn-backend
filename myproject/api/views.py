@@ -4,8 +4,8 @@ from rest_framework import viewsets
 from rest_framework.decorators import api_view, action
 from rest_framework.response import Response
 from rest_framework import status
-from .models import client, rate, subscription
-from .serializers import clientSerializer, rateSerializer, subscriptionSerializer
+from .models import client, rate, subscription, codes
+from .serializers import clientSerializer, rateSerializer, subscriptionSerializer, codesSerializer
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
 import json
@@ -16,6 +16,10 @@ from rest_framework.exceptions import NotFound
 import logging
 
 logger = logging.getLogger(__name__)
+
+class CodesViewSet(viewsets.ModelViewSet):
+    queryset = codes.objects.all()
+    serializer_class = CodesSerializer
 
 class clientViewSet(viewsets.ModelViewSet):
     queryset = client.objects.all()

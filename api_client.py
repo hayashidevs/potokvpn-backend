@@ -42,6 +42,28 @@ async def check_user_registration(telegram_id):
                 return False, False
             
 
+async def get_uniqe_codes_and_update(unique_code):
+    async with aiohttp.ClientSession() as session:
+        url = f"{config.DJANGO_API_URL}/api/codes/"
+        async with session.get(url) as response:
+            if response.status == 200:
+                data = await response.json()
+                for i in data:
+                    if i['code'] == unique_code and i['used_code'] == False:
+                        id_unique_code = i['id']
+                        url = f"{config.DJANGO_API_URL}/api/codes/{id_unique_code}/"
+                        params = {'used_code': True}
+                        async with session.patch(url) as response:
+                            if response.status:
+                                return True
+                            else:
+                                return False
+                    else:
+                        return False
+            else:
+                return False
+            
+
 async def get_referral_id_by_telegram_id(telegram_id):
     try:
         async with aiohttp.ClientSession() as session:
