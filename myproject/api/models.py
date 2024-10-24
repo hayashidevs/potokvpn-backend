@@ -119,7 +119,6 @@ class codes(models.Model):
     used_code = models.BooleanField(default=False)
 
     class Meta:
-        db_table = 'codes'
         verbose_name = 'Уникальный код'  
         verbose_name_plural = 'Уникальные коды'
 
