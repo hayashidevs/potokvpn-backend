@@ -1,9 +1,14 @@
 from rest_framework import serializers
-from .models import client, rate, subscription
+from .models import client, rate, subscription, codes
 
 class clientSerializer(serializers.ModelSerializer):
     class Meta:
         model = client
+        fields = '__all__'
+
+class codesSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = codes
         fields = '__all__'
 
 class rateSerializer(serializers.ModelSerializer):
