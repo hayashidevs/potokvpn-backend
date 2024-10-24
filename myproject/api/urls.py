@@ -1,8 +1,9 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import clientViewSet, rateViewSet, subscriptionViewSet, get_expiring_subscriptions, update_subscription, delete_subscription, apply_referral, client_list, SubscriptionDetail, update_subscription_dateend
+from .views import clientViewSet, CodesViewSet, rateViewSet, subscriptionViewSet, get_expiring_subscriptions, update_subscription, delete_subscription, apply_referral, client_list, SubscriptionDetail, update_subscription_dateend
 router = DefaultRouter()
 router.register(r'clients', clientViewSet)
+router.register(r'codes', CodesViewSet)
 router.register(r'rates', rateViewSet)
 router.register(r'subscriptions', subscriptionViewSet)
 

@@ -113,3 +113,14 @@ class subscription(models.Model):
         if not self.dateend.tzinfo:
             self.dateend = timezone.make_aware(self.dateend, timezone.get_current_timezone())
         super().save(*args, **kwargs)
+
+class codes(models.Model):
+    code = models.CharField(max_length=255, blank=True, null=True)
+    used_code = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'codes'
+        verbose_name = 'Уникальный код'  
+        verbose_name_plural = 'Уникальные коды'
+
+    
