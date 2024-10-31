@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class CodesViewSet(viewsets.ModelViewSet):
     queryset = codes.objects.all()
-    serializer_class = CodesSerializer
+    serializer_class = codesSerializer
 
 class clientViewSet(viewsets.ModelViewSet):
     queryset = client.objects.all()

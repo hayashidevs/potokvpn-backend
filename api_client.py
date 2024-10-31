@@ -1,3 +1,4 @@
+import os
 import requests
 import config
 import aiohttp
@@ -8,14 +9,14 @@ import yaml
 from utils import setup_logging, log
 
 # Load additional config if needed
-config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.yaml')
+'''config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.yaml')
 with open(config_path, 'r') as file:
     config = yaml.safe_load(file)
 
 # Load paths from config.yaml
 data_dir = config['data_storage']['data_directory']
 logs_dir = config['data_storage']['logs_directory']
-log_filename = config['data_storage']['log_filename']
+log_filename = config['data_storage']['log_filename']'''
 
 
 def handle_response(response):
@@ -43,26 +44,43 @@ async def check_user_registration(telegram_id):
             
 
 async def get_uniqe_codes_and_update(unique_code):
-    async with aiohttp.ClientSession() as session:
-        url = f"{config.DJANGO_API_URL}/api/codes/"
-        async with session.get(url) as response:
-            if response.status == 200:
-                data = await response.json()
-                for i in data:
-                    if i['code'] == unique_code and i['used_code'] == False:
-                        id_unique_code = i['id']
-                        url = f"{config.DJANGO_API_URL}/api/codes/{id_unique_code}/"
-                        params = {'used_code': True}
-                        async with session.patch(url) as response:
-                            if response.status:
-                                return True
-                            else:
-                                return False
-                    else:
-                        return False
-            else:
-                return False
-            
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"{config.DJANGO_API_URL}/api/codes/"
+            async with session.get(url) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    
+                    # Debug log to check fetched codes
+                    print(f"Fetched unique codes: {data}")
+                    
+                    # Iterate over codes to check for a match with the user-provided unique_code
+                    for code_entry in data:
+                        if code_entry['code'] == unique_code and not code_entry['used_code']:
+                            # Mark the code as used by sending a PATCH request
+                            id_unique_code = code_entry['id']
+                            update_url = f"{config.DJANGO_API_URL}/api/codes/{id_unique_code}/"
+                            update_data = {'used_code': True}
+                            async with session.patch(update_url, json=update_data) as patch_response:
+                                if patch_response.status == 200:
+                                    print(f"Code '{unique_code}' marked as used.")
+                                    return True
+                                else:
+                                    # Log the error if updating fails
+                                    print(f"Failed to update code '{unique_code}' with ID {id_unique_code}: {patch_response.status}")
+                                    return False
+                    # Log if no matching unused code is found
+                    print(f"No matching unused code found for '{unique_code}'")
+                    return False
+                else:
+                    # Log if initial request to fetch codes fails
+                    print(f"Failed to fetch codes: {response.status}")
+                    return False
+    except Exception as e:
+        # General exception logging
+        print(f"Exception in get_uniqe_codes_and_update: {e}")
+        return False
+
 
 async def get_referral_id_by_telegram_id(telegram_id):
     try:
@@ -170,7 +188,7 @@ async def get_user_details(telegram_id):
                 return referred_by
     except Exception as e:
         print(f"API request error: {str(e)}")
-        logt(f"API request error: {str(e)}")
+        log(f"API request error: {str(e)}")
         return f"An unexpected error occurred: {str(e)}"
 
 
@@ -327,56 +345,46 @@ async def update_usedref(telegram_id):
 async def add_device(telegram_id, subs_name, device_name, datestart):
     client_id = await get_client_id_from_telegram_id(telegram_id)
     if not client_id:
-        return "No valid client ID found for the given Telegram ID. Please ensure the Telegram ID exists in the database."
+        return "No valid client ID found for the given Telegram ID."
 
     rateid = await get_rate_id_from_ratename(subs_name)
-    dayamount = await get_days_from_ratename(subs_name)  # Correctly fetch dayamount here
+    if not rateid:
+        return "Rate ID could not be found for the subscription name provided."
+
+    dayamount = await get_days_from_ratename(subs_name)
+    if not isinstance(dayamount, int):
+        return "Invalid day amount for the given subscription name."
+
+    date_format = "%Y-%m-%dT%H:%M:%S"
+    date_start = datetime.strptime(datestart, date_format)
+    date_end = date_start + timedelta(days=dayamount)
+    date_end_str = date_end.strftime(date_format)
 
     async with aiohttp.ClientSession() as session:
-        async with session.get(f"{config.DJANGO_API_URL}/api/rates/", params={'rateid': rateid}) as rate_response:
-            if rate_response.status != 200:
-                return f"Failed to fetch rates with status {rate_response.status}: {await rate_response.text()}"
-
-            rate_data = await rate_response.json()
-            if not isinstance(rate_data, list) or len(rate_data) == 0:
-                return "Empty or invalid rate data received from the API"
-
-            if not all(isinstance(rate, dict) for rate in rate_data):
-                return "Invalid rate data format received from the API"
-
-            if not dayamount:
-                return "Day amount not found in rate data"
-
-            date_format = "%Y-%m-%dT%H:%M:%S"
-            date_start = datetime.strptime(datestart, date_format)
-            date_end = date_start + timedelta(days=int(dayamount))
-            date_end_str = date_end.strftime(date_format)
-
-            data = {
-                'clientid': client_id,
-                'rateid': rateid,
-                'datestart': datestart,
-                'dateend': date_end_str,
-                'name': device_name
-            }
-
-            async with session.post(f"{config.DJANGO_API_URL}/api/subscriptions/", json=data) as subscription_response:
-                if subscription_response.status == 201:
-                    subscription_response_json = await subscription_response.json()
-                    subscription_id = subscription_response_json.get('id', None)
-                    if not subscription_id:
-                        return "Error: No subscription ID returned from the server."
-
-                    config_name = subscription_id[:8]
-                    update_payload = {'config_name': config_name}
-                    async with session.patch(f"{config.DJANGO_API_URL}/api/subscriptions/{subscription_id}/", json=update_payload) as patch_response:
-                        if patch_response.status != 200:
-                            return f"Failed to update subscription config_name with status {patch_response.status}: {await patch_response.text()}"
-
-                    return subscription_id
-
+        subscription_data = {
+            'clientid': client_id,
+            'rateid': rateid,
+            'datestart': datestart,
+            'dateend': date_end_str,
+            'name': device_name
+        }
+        async with session.post(f"{config.DJANGO_API_URL}/api/subscriptions/", json=subscription_data) as subscription_response:
+            if subscription_response.status == 201:
+                subscription_json = await subscription_response.json()
+                subscription_id = subscription_json.get('id')
+                if not subscription_id:
+                    return "Error: No subscription ID returned from the server."
+                
+                # Update the subscription with a config name derived from the subscription ID
+                config_name = subscription_id[:8]
+                update_data = {'config_name': config_name}
+                async with session.patch(f"{config.DJANGO_API_URL}/api/subscriptions/{subscription_id}/", json=update_data) as patch_response:
+                    if patch_response.status == 200:
+                        return subscription_id
+                    else:
+                        return f"Failed to update subscription config_name with status {patch_response.status}: {await patch_response.text()}"
+            else:
                 return f"Failed to create subscription with status {subscription_response.status}: {await subscription_response.text()}"
-
 
 
 

@@ -7,7 +7,7 @@ from django.urls import path, re_path, reverse
 from django.http import JsonResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.utils.html import format_html
-from .models import client, rate, subscription
+from .models import client, rate, subscription, codes
 
 # Set up basic logging configuration
 logging.basicConfig(
@@ -208,6 +208,42 @@ class subscriptionAdmin(admin.ModelAdmin):
         return obj.rateid.name
     get_rate_name.short_description = 'Название тарифа'
     get_rate_name.admin_order_field = 'rate__name'
+
+
+from django.contrib import admin
+from .models import codes
+
+@admin.register(codes)
+class CodesAdmin(admin.ModelAdmin):
+    # Display code and its usage status in the list view
+    list_display = ('id', 'code', 'used_code')
+    # Add filtering options based on 'used_code'
+    list_filter = ('used_code',)
+    # Allow searching by 'code'
+    search_fields = ('code',)
+    # Make 'code' editable directly in the list view
+    list_editable = ('used_code',)
+    # Add options for bulk actions on selected items
+    actions = ['mark_as_used', 'mark_as_unused']
+
+    def mark_as_used(self, request, queryset):
+        """
+        Custom admin action to mark selected codes as used.
+        """
+        updated = queryset.update(used_code=True)
+        self.message_user(request, f"{updated} codes have been marked as used.")
+
+    mark_as_used.short_description = "Mark selected codes as used"
+
+    def mark_as_unused(self, request, queryset):
+        """
+        Custom admin action to mark selected codes as unused.
+        """
+        updated = queryset.update(used_code=False)
+        self.message_user(request, f"{updated} codes have been marked as unused.")
+
+    mark_as_unused.short_description = "Mark selected codes as unused"
+
 
 admin.site.register(client, clientAdmin)
 admin.site.register(rate, rateAdmin)

@@ -36,21 +36,6 @@ storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 dp.middleware.setup(LoggingMiddleware())
 
-# Load additional config if needed
-config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.yaml')
-with open(config_path, 'r') as file:
-    config = yaml.safe_load(file)
-
-# Load paths from config.yaml
-data_dir = config['data_storage']['data_directory']
-logs_dir = config['data_storage']['logs_directory']
-log_filename = config['data_storage']['log_filename']
-
-# Ensure data and logs directories exist
-os.makedirs(data_dir, exist_ok=True)
-os.makedirs(logs_dir, exist_ok=True)
-
-
 # States
 class FormStates(StatesGroup):
     PROMOCODE = State()
@@ -298,7 +283,7 @@ async def main_menu(message: types.Message):
     
     used_test, _ = await is_test_subscription_used(message.from_user.id)
     if not used_test:
-        keyboard.add(InlineKeyboardButton("Бесплатный доступ", callback_data='test_subscription'))
+        keyboard.add(InlineKeyboardButton("Активировать подарок 🎁", callback_data='test_subscription'))
     
     await message.answer("🗂️ Выберите пункт меню:", reply_markup=keyboard)
 
@@ -313,14 +298,14 @@ async def main_menu_call(call: types.CallbackQuery):
 
     used_test, _ = await is_test_subscription_used(call.from_user.id)
     if not used_test:
-        keyboard.add(InlineKeyboardButton("Бесплатный доступ", callback_data='test_subscription'))
+        keyboard.add(InlineKeyboardButton("Активировать подарок 🎁", callback_data='test_subscription'))
 
     await bot.send_message(call.from_user.id, "🗂️ Выберите пункт меню:", reply_markup=keyboard)
 
 
 @dp.callback_query_handler(text='instructions', state='*')
 async def test_subscription(call: types.CallbackQuery, state: FSMContext):
-    inline_button = types.InlineKeyboardButton(text="Инструкция", url="https://teletype.in/@potokvpn/JjScNR2HaLW")
+    inline_button = types.InlineKeyboardButton(text="Инструкция", url="https://teletype.in/@potok_you/guide")
     inline_button2 = types.InlineKeyboardButton(text="Назад", callback_data='back_to_main_menu')
 
     # Создаем клавиатуру и добавляем кнопку
@@ -374,11 +359,11 @@ async def test_subscription(call: types.CallbackQuery, state: FSMContext):
     used_test, client_details = await is_test_subscription_used(call.from_user.id)
     
     if used_test:
-        await call.message.answer("Вы уже использовали бесплатный доступ.")
+        await call.message.answer("Вы уже использовали подарок.")
         await main_menu_call(call)
         return
     
-    await call.message.answer("🔠 Введите кодовое слово и получите 3 дня бесплатного доступа к сервису [поток VPN]")
+    await call.message.answer("🎁 Введите кодовое слово и активируйте подарочный сертификат")
     await call.message.delete_reply_markup()  # Удаляем клавиатуру
     # Устанавливаем состояние 'test_subscription'
     await FormStatesTestSubs.PROMO.set()
@@ -725,112 +710,6 @@ async def test_subscription(message: types.Message, state: FSMContext):
     await message.answer(text="ℹ️ Перейдите по ссылке, чтобы связаться с технической поддержкой", reply_markup=keyboard)
 
 
-@dp.message_handler(state=FormStatesTestSubs.PROMO)
-async def process_device_type(message: types.Message, state: FSMContext):
-    promo = message.text
-    if promo == key:
-        await update_test_subscription_used(message.from_user.id)  # Update the UsedTestSubscription field
-        response = await api_client.add_device(message.from_user.id, 'test rate', 'Тестовая подписка', datetime.now().strftime("%Y-%m-%dT%H:%M:%S"))
-
-        if not isinstance(response, str):
-            log("Error while creating subscription: ", isinstance, response, promo)
-            await message.answer('Ошибка при создании подписки. Попробуйте снова позже.')
-            await state.finish()
-            return
-
-        subscription_id = response
-
-        try:
-            uuid_obj = uuid.UUID(subscription_id)
-        except ValueError:
-            await message.answer('Ошибка: неверный формат UUID.')
-            log("Invalid UUID format: ", uuid_obj)
-            await state.finish()
-            return
-
-        wg_payload = {'subscription_id': str(uuid_obj)}
-        print(f"Request to WireGuard API: {wg_payload}")
-
-        wg_response = requests.post(f'{config.WGAPI_URL}/wireguard/add_user/', json=wg_payload)
-        print(f"Response from WireGuard API: {wg_response.status_code} - {wg_response.text}")
-
-        if wg_response.status_code != 200:
-            log("Error while accessing Wireguard API, try again later: ", wg_response)
-            await message.answer('Ошибка при обращении к API WireGuard. Попробуйте снова позже.')
-            await state.finish()
-            return
-
-        wg_response_data = wg_response.json()
-        config_file_text = wg_response_data.get('config_content')
-        config_file_text = config_file_text.replace(",::/128", "")
-
-        if not config_file_text:
-            log("Error: Cannot get Wireguard content: ", config_file_text)
-            await message.answer('Ошибка: не удалось получить конфигурацию WireGuard.')
-            await state.finish()
-            return
-
-        config_file_path = f'configs/{subscription_id[:8]}.conf'
-        with open(config_file_path, 'w') as config_file:
-            config_file.write(config_file_text)
-
-        await bot.send_document(message.chat.id, open(config_file_path, 'rb'))
-        os.remove(config_file_path)
-        await message.answer('Ваша тестовая подписка успешно создана!')
-
-        await state.finish()
-        await main_menu(message)
-    elif get_uniqe_codes_and_update(promo):
-        await update_test_subscription_used(message.from_user.id)  # Update the UsedTestSubscription field
-        response = await api_client.add_device(message.from_user.id, 'free_sub', 'Подарочная подписка', datetime.now().strftime("%Y-%m-%dT%H:%M:%S"))
-
-        if not isinstance(response, str):
-            await message.answer('Ошибка при создании подписки. Попробуйте снова позже.')
-            await state.finish()
-            return
-
-        subscription_id = response
-
-        try:
-            uuid_obj = uuid.UUID(subscription_id)
-        except ValueError:
-            await message.answer('Ошибка: неверный формат UUID.')
-            await state.finish()
-            return
-
-        wg_payload = {'subscription_id': str(uuid_obj)}
-        print(f"Request to WireGuard API: {wg_payload}")
-
-        wg_response = requests.post(f'{config.WGAPI_URL}/wireguard/add_user/', json=wg_payload)
-        print(f"Response from WireGuard API: {wg_response.status_code} - {wg_response.text}")
-
-        if wg_response.status_code != 200:
-            await message.answer('Ошибка при обращении к API WireGuard. Попробуйте снова позже.')
-            await state.finish()
-            return
-
-        wg_response_data = wg_response.json()
-        config_file_text = wg_response_data.get('config_content')
-        config_file_text = config_file_text.replace(",::/128", "")
-
-        if not config_file_text:
-            await message.answer('Ошибка: не удалось получить конфигурацию WireGuard.')
-            await state.finish()
-            return
-
-        config_file_path = f'configs/{subscription_id[:8]}.conf'
-        with open(config_file_path, 'w') as config_file:
-            config_file.write(config_file_text)
-
-        await bot.send_document(message.chat.id, open(config_file_path, 'rb'))
-        os.remove(config_file_path)
-        await message.answer('Ваша тестовая подписка успешно создана!')
-
-        await state.finish()
-        await main_menu(message)
-    else:
-        await message.answer('🚫 Неверное кодовое слово либо истек срок его использования')
-        await main_menu(message)
 
 @dp.message_handler(state=FormStates.PROMOCODE)
 async def process_promo_code(message: types.Message, state: FSMContext):
@@ -896,6 +775,147 @@ async def process_device_type(message: types.Message, state: FSMContext):
         start_parameter='pay',
         payload='product_id_prod'
     )
+
+@dp.message_handler(state=FormStatesTestSubs.PROMO)
+async def process_device_type(message: types.Message, state: FSMContext):
+    promo = message.text
+    # Check if the entered promo code is the predefined key
+    if promo == key:
+        # Update the test subscription field for the user
+        # await update_test_subscription_used(message.from_user.id)
+        
+        # Attempt to add a new test subscription for the user
+        response = await api_client.add_device(
+            message.from_user.id, 'test rate', 'Тестовая подписка', 
+            datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        )
+        
+        # If the response is not a string, something went wrong
+        if not isinstance(response, str):
+            await message.answer('Ошибка при создании подписки. Попробуйте снова позже.')
+            await state.finish()
+            return
+        
+        # Proceed with creating the UUID and configuring the subscription
+        subscription_id = response
+        try:
+            uuid_obj = uuid.UUID(subscription_id)
+        except ValueError:
+            await message.answer('Ошибка: неверный формат UUID.')
+            await state.finish()
+            return
+        
+        # Prepare the WireGuard API payload with the subscription ID
+        wg_payload = {'subscription_id': str(uuid_obj)}
+        print(f"Request to WireGuard API: {wg_payload}")
+        
+        # Send request to WireGuard API
+        wg_response = requests.post(f'{config.WGAPI_URL}/wireguard/add_user/', json=wg_payload)
+        print(f"Response from WireGuard API: {wg_response.status_code} - {wg_response.text}")
+        
+        # Handle any issues in the WireGuard response
+        if wg_response.status_code != 200:
+            await message.answer('Ошибка при обращении к API WireGuard. Попробуйте снова позже.')
+            await state.finish()
+            return
+        
+        # Extract configuration content from response and write to a file
+        wg_response_data = wg_response.json()
+        config_file_text = wg_response_data.get('config_content', '').replace(",::/128", "")
+        
+        if not config_file_text:
+            await message.answer('Ошибка: не удалось получить конфигурацию WireGuard.')
+            await state.finish()
+            return
+
+        # Save configuration to a file and send to the user
+        config_file_path = f'configs/{subscription_id[:8]}.conf'
+        with open(config_file_path, 'w') as config_file:
+            config_file.write(config_file_text)
+        
+        await bot.send_document(message.chat.id, open(config_file_path, 'rb'))
+        os.remove(config_file_path)
+        
+        # Notify user of successful test subscription creation
+        await message.answer(
+        f"Поздравляем!\n"
+        "Вы активировали подарочную подписку, чтобы подключить Potok VPN добавьте файл в приложение\n\n"
+        '<a href="https://teletype.in/@potok_you/guide">Инструкция</a>',
+        parse_mode=ParseMode.HTML
+    )
+
+        
+        await state.finish()
+        await main_menu(message)
+    
+    # Check if the promo code exists and is valid
+    elif await get_uniqe_codes_and_update(promo):
+        # Update the test subscription field for the user
+        # await update_test_subscription_used(message.from_user.id)
+        
+        # Attempt to add a new promotional subscription
+        response = await api_client.add_device(
+            message.from_user.id, 'free_sub', 'Подарочная подписка', 
+            datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        )
+        
+        # Handle response to ensure subscription creation was successful
+        if not isinstance(response, str):
+            await message.answer('Ошибка при создании подписки. Попробуйте снова позже.')
+            await state.finish()
+            return
+        
+        subscription_id = response
+        
+        # Verify the format of the subscription ID
+        try:
+            uuid_obj = uuid.UUID(subscription_id)
+        except ValueError:
+            await message.answer('Ошибка: неверный формат UUID.')
+            await state.finish()
+            return
+        
+        # Send subscription ID to WireGuard API
+        wg_payload = {'subscription_id': str(uuid_obj)}
+        wg_response = requests.post(f'{config.WGAPI_URL}/wireguard/add_user/', json=wg_payload)
+        
+        if wg_response.status_code != 200:
+            await message.answer('Ошибка при обращении к API WireGuard. Попробуйте снова позже.')
+            await state.finish()
+            return
+        
+        # Get and clean up configuration text
+        wg_response_data = wg_response.json()
+        config_file_text = wg_response_data.get('config_content', '').replace(",::/128", "")
+        
+        if not config_file_text:
+            await message.answer('Ошибка: не удалось получить конфигурацию WireGuard.')
+            await state.finish()
+            return
+        
+        # Save and send configuration file to user
+        config_file_path = f'configs/{subscription_id[:8]}.conf'
+        with open(config_file_path, 'w') as config_file:
+            config_file.write(config_file_text)
+        
+        await bot.send_document(message.chat.id, open(config_file_path, 'rb'))
+        os.remove(config_file_path)
+        
+        await message.answer(
+        f"Поздравляем!\n"
+        "Вы активировали подарочную подписку, чтобы подключить Potok VPN добавьте файл в приложение\n\n"
+        '<a href="https://teletype.in/@potok_you/certificates">Инструкция</a>',
+        parse_mode=ParseMode.HTML
+    )
+
+        
+        await state.finish()
+        await main_menu(message)
+    
+    # If the promo code is invalid, show error message
+    else:
+        await message.answer('🚫 Неверное кодовое слово либо истек срок его использования')
+        await main_menu(message)
 
 
 @dp.message_handler(state=Oform.Tariff)
@@ -997,6 +1017,9 @@ async def midnight_task():
 
 
 
+
+
+
 async def check_time():
     while True:
         now = datetime.now().time()
@@ -1008,9 +1031,6 @@ async def check_time():
 if __name__ == '__main__':
     import asyncio
     # Initialize logging with the log file from config.yaml
-    log_path = os.path.join(logs_dir, log_filename)
-    setup_logging(log_path)
-
     loop = asyncio.get_event_loop()
     loop.create_task(dp.start_polling())
     loop.create_task(check_time())
