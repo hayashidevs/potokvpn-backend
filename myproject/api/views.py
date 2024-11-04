@@ -1,20 +1,29 @@
-from django.shortcuts import render
-from django.http import JsonResponse
+from django.shortcuts import render, redirect
+from django.http import JsonResponse, HttpResponse, FileResponse, Http404
+from django.conf import settings
+from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
+
 from rest_framework import viewsets
 from rest_framework.decorators import api_view, action
 from rest_framework.response import Response
 from rest_framework import status
-from .models import client, rate, subscription, codes
-from .serializers import clientSerializer, rateSerializer, subscriptionSerializer, codesSerializer
-from django.views.decorators.csrf import csrf_exempt
-from django.utils import timezone
-import json
-from datetime import timedelta
-from django.views.decorators.http import require_http_methods
 from rest_framework import generics
 from rest_framework.exceptions import NotFound
-import logging
 
+from .models import client, rate, subscription, codes
+from .serializers import clientSerializer, rateSerializer, subscriptionSerializer, codesSerializer
+
+import json
+from datetime import timedelta
+
+import logging
+import os
+import requests
+
+
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class CodesViewSet(viewsets.ModelViewSet):
@@ -217,3 +226,4 @@ class SubscriptionDetail(generics.RetrieveAPIView):
         if obj is None:
             raise NotFound('A subscription with this client ID does not exist.')
         return obj
+

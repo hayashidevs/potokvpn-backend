@@ -801,3 +801,36 @@ async def check_and_register_with_username(telegram_id, username, first_name, la
                 logging.error(f"Failed to check user existence ({response.status}): {await response.text()}")
                 return False
 
+async def save_config_from_url(subscription_id, download_url):
+    """
+    Fetches a configuration file from the provided URL and saves it to the 'basedir/configs' directory.
+    
+    Args:
+        subscription_id (str): The subscription ID used to name the config file.
+        download_url (str): The URL from which to download the configuration file.
+        
+    Returns:
+        str: The file path where the config was saved, or an error message if the process fails.
+    """
+    try:
+        # Fetch the config content from the URL
+        response = requests.get(download_url)
+        
+        if response.status_code != 200:
+            return f"Failed to download config: {response.status_code} - {response.text}"
+        
+        # Create the path for saving the config file
+        config_filename = f"{subscription_id[:8]}.conf"
+        config_dir = os.path.join(os.path.dirname(__file__), 'configs')
+        os.makedirs(config_dir, exist_ok=True)
+        
+        config_path = os.path.join(config_dir, config_filename)
+        
+        # Save the content to a file
+        with open(config_path, 'w') as config_file:
+            config_file.write(response.text)
+        
+        return config_path
+    
+    except Exception as e:
+        return f"Error occurred while saving config: {str(e)}"

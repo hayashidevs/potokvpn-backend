@@ -9,3 +9,7 @@ django-axes
 django-cron
 aiogram==2.25
 django-jet-reboot
+yookassa
+jsonify
+python-telegram-bot
+Flask

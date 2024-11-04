@@ -72,7 +72,7 @@ ROOT_URLCONF = 'myproject.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [os.path.join(BASE_DIR, 'myproject', 'api', 'templates')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -163,3 +163,7 @@ CRON_CLASSES = [
     'api.crons.CheckSubscriptionsCronJob',
     'api.crons.ResetSubscriptionUsageCronJob',
 ]
+
+
+YOOKASSA_SHOP_ID = '483792'
+YOOKASSA_SECRET_KEY = 'test_YjaFTcsectsFD93CdiJs8egWFx5dpfyuT7lqXSn0JPg'
