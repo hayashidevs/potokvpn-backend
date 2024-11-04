@@ -25,7 +25,7 @@ key = config.Promik
 API_TOKEN = config.TELEGRAM_TOKEN
 YOOTOKEN = config.PAYMENTS_TOKEN
 
-urls = {'iphone': 'https://apps.apple.com/ru/app/amneziavpn/id1600529900?l=en-GB', 'android': 'https://play.google.com/store/apps/details?id=org.amnezia.vpn', 'macos': 'https://github.com/hayashidevs/potokvpn-client/releases/latest/download/PotokVPN.dmg', 'windows': 'https://github.com/hayashidevs/potokvpn-client/releases/latest/download/PotokVPN_x64.exe', 'linux': 'https://github.com/hayashidevs/potokvpn-client/releases/latest/download/PotokVPN_Linux_Installer.tar'}
+urls = {'iphone': 'https://apps.apple.com/mx/app/amneziawg/id6478942365?l=en-GB', 'android': 'https://play.google.com/store/apps/details?id=org.amnezia.vpn', 'macos': 'https://github.com/hayashidevs/potokvpn-client/releases/latest/download/PotokVPN.dmg', 'windows': 'https://github.com/hayashidevs/potokvpn-client/releases/latest/download/PotokVPN_x64.exe', 'linux': 'https://github.com/hayashidevs/potokvpn-client/releases/latest/download/PotokVPN_Linux_Installer.tar'}
 
 tgIDs = []
 
