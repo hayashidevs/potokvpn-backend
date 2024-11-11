@@ -23,7 +23,7 @@ def initiate_payment():
         return jsonify({'status': 'error', 'message': 'Missing required parameters'}), 400
 
     # Create payment via web app
-    payment_url = f"{config.WEBSITE}/telegram/create-payment/{client_id}/{rate_id}/{telegram_id}"
+    payment_url = f"{config.WEBSITE}/telegram/create-payment/{client_id}/{rate_id}/"
     response = requests.get(payment_url)
 
     if response.status_code == 200:

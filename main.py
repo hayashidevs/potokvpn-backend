@@ -950,10 +950,11 @@ async def process_tariff(message: types.Message, state: FSMContext):
                     data = await response.json()
                     payment_link = data.get("payment_link")
                     if payment_link:
+                        keyboard_payment = InlineKeyboardMarkup().add(InlineKeyboardButton(text="Оплатить", url=payment_link))
                         # Отправка ссылки на оплату в Telegram
                         await message.reply(
-                            f"✅ Пожалуйста, завершите оплату по следующей ссылке: {payment_link}\n"
-                            "💬 После завершения оплаты конфигурация будет отправлена в этот чат."
+                            f"✅ Пожалуйста, завершите оплату по следующей ссылке\n"
+                            "💬 После завершения оплаты конфигурация будет отправлена в этот чат.", reply_markup=keyboard_payment
                         )
                     else:
                         await message.reply("❌ Не удалось создать оплату. Попробуйте позже.")
