@@ -72,7 +72,7 @@ async def start(message: types.Message, state: FSMContext):
             message.from_user.last_name
     )
 
-    if check_register[0] is False:
+    if check_register is False:
         status = await api_client.check_user_registration(message.from_user.id)
         if status[1] is False:
             await api_client.register_user(
@@ -319,6 +319,7 @@ async def test_subscription(call: types.CallbackQuery, state: FSMContext):
 @dp.callback_query_handler(text='add_device')
 async def add_device(call: types.CallbackQuery):
     refby = await get_user_details(call.from_user.id)
+    print(f'REFFERAL BY: {refby}')
     if refby is None:
         keyboard = InlineKeyboardMarkup(row_width=2)
         keyboard.add(
@@ -920,26 +921,48 @@ async def process_device_type(message: types.Message, state: FSMContext):
 
 @dp.message_handler(state=Oform.Tariff)
 async def process_tariff(message: types.Message, state: FSMContext):
-    tariffname_price = message.text.split(' - ')
-    tariffname = tariffname_price[0]
-    tariffprice = re.sub(r'\D', '', tariffname_price[1])  # Remove non-numeric characters
+    try:
+        # Получение имени и цены тарифа из сообщения
+        tariffname_price = message.text.split(' - ')
+        tariffname = tariffname_price[0]
+        tariffprice = re.sub(r'\D', '', tariffname_price[1])  # Убираем все символы кроме цифр
 
-    async with state.proxy() as data:
-        data['tariffname'] = tariffname
+        # Сохранение информации о тарифе в состояние FSM
+        async with state.proxy() as data:
+            data['tariffname'] = tariffname
 
-    prices = [
-        LabeledPrice(label=tariffname, amount=int(tariffprice) * 100)  # Convert to minor units, e.g., kopeks
-    ]
-    await bot.send_invoice(
-        chat_id=message.chat.id,
-        title='Оплата товара',
-        description='Покупка подписки',
-        provider_token=YOOTOKEN,
-        currency='RUB',
-        prices=prices,
-        start_parameter='pay',
-        payload='product_id'
-    )
+        # Получение идентификаторов клиента и тарифа
+        telegram_id = message.chat.id
+        client_id = await get_client_id_from_telegram_id(telegram_id)
+        rate_id = await get_rate_id_from_ratename(tariffname)
+
+        # Отправка запроса на Flask-сервер для создания оплаты
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"http://127.0.0.1:5000/initiate_payment",
+                json={
+                    "client_id": client_id,
+                    "rate_id": rate_id,
+                    "telegram_id": telegram_id
+                }
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    payment_link = data.get("payment_link")
+                    if payment_link:
+                        # Отправка ссылки на оплату в Telegram
+                        await message.reply(
+                            f"✅ Пожалуйста, завершите оплату по следующей ссылке: {payment_link}\n"
+                            "💬 После завершения оплаты конфигурация будет отправлена в этот чат."
+                        )
+                    else:
+                        await message.reply("❌ Не удалось создать оплату. Попробуйте позже.")
+                else:
+                    error_message = await response.text()
+                    await message.reply(f"❌ Ошибка создания оплаты: {error_message}")
+    except Exception as e:
+        await message.reply(f"Произошла ошибка: {str(e)}")
+
 
 
 async def print_state(state: FSMContext):
