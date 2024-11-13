@@ -453,7 +453,7 @@ async def my_devices(message: types.Message, state: FSMContext):
 
     client_id = await get_client_id_from_telegram_id(message.from_user.id)
     if not client_id:
-        log("Account not found ", client_id)
+        log("Account not found " + str(client_id))
         await message.reply("Не удалось найти ваш аккаунт.", reply_markup=keyboard)
         return
 
@@ -497,7 +497,7 @@ async def my_devices(call: types.CallbackQuery, state: FSMContext):
 
     client_id = await get_client_id_from_telegram_id(call.from_user.id)
     if not client_id:
-        log("Account not found ", client_id)
+        log("Account not found " + str(client_id))
         await call.message.edit_text("Не удалось найти ваш аккаунт.", reply_markup=keyboard)
         return
 
@@ -513,10 +513,16 @@ async def my_devices(call: types.CallbackQuery, state: FSMContext):
     for subscription in subscriptions:
         if subscription['clientid'] == client_id:
             date_string = subscription['datestart']
-            date_object = datetime.strptime(date_string, "%Y-%m-%dT%H:%M:%SZ")
+            try:
+                date_object = datetime.strptime(date_string, '%Y-%m-%dT%H:%M:%SZ')
+            except:
+                date_object = datetime.strptime(date_string, "%Y-%m-%dT%H:%M:%S.%fZ")
             readable_date = date_object.strftime("%d %B %Y, %H:%M:%S")
             date_string2 = subscription['dateend']
-            date_object2 = datetime.strptime(date_string2, "%Y-%m-%dT%H:%M:%SZ")
+            try:
+                date_object2 = datetime.strptime(date_string, '%Y-%m-%dT%H:%M:%SZ')
+            except:
+                date_object2 = datetime.strptime(date_string, "%Y-%m-%dT%H:%M:%S.%fZ")
             readable_date2 = date_object2.strftime("%d %B %Y, %H:%M:%S")
             texttoper += f"<pre>Подписка: {subscription['name']}\nНачало: {readable_date}\nКонец: {readable_date2}\n\n"
 
