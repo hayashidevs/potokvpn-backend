@@ -792,21 +792,45 @@ async def process_device_type(message: types.Message, state: FSMContext):
     tariffprice = re.sub(r'\D', '', tariffname_price[1])  # Remove non-numeric characters
     
     async with state.proxy() as data:
-        data['tariffname'] = tariffname
+        data['tariffname'] = tariffname,
+        subs_id = data['subs_id']
 
     prices = [
         LabeledPrice(label=tariffname, amount=int(tariffprice) * 100)  # Convert to minor units, e.g., kopeks
     ]
-    await bot.send_invoice(
-        chat_id=message.chat.id,
-        title='Оплата товара',
-        description='Продление подписки',
-        provider_token=YOOTOKEN,
-        currency='RUB',
-        prices=prices,
-        start_parameter='pay',
-        payload='product_id_prod'
-    )
+
+    telegram_id = message.chat.id
+    client_id = await get_client_id_from_telegram_id(telegram_id)
+    rate_id = await get_rate_id_from_ratename(tariffname)
+
+    async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{config.PAYMENT_MODULE}/initiate_payment",
+                json={
+                    "client_id": client_id,
+                    "rate_id": rate_id,
+                    "telegram_id": telegram_id,
+                    "type_payment": "renewal",
+                    "tariffname": tariffname,
+                    "subs_id": subs_id
+                }
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    payment_link = data.get("payment_link")
+                    if payment_link:
+                        keyboard_payment = InlineKeyboardMarkup().add(InlineKeyboardButton(text="Оплатить", url=payment_link))
+                        # Отправка ссылки на оплату в Telegram
+                        await message.reply(
+                            f"✅ Пожалуйста, завершите оплату по следующей ссылке\n"
+                            "💬 После завершения оплаты конфигурация будет отправлена в этот чат.", reply_markup=keyboard_payment
+                        )
+                    else:
+                        await message.reply("❌ Не удалось создать оплату. Попробуйте позже.")
+                else:
+                    error_message = await response.text()
+                    await message.reply(f"❌ Ошибка создания оплаты: {error_message}")
+
 
 @dp.message_handler(state=FormStatesTestSubs.PROMO)
 async def process_device_type(message: types.Message, state: FSMContext):
@@ -957,10 +981,11 @@ async def process_tariff(message: types.Message, state: FSMContext):
         tariffname_price = message.text.split(' - ')
         tariffname = tariffname_price[0]
         tariffprice = re.sub(r'\D', '', tariffname_price[1])  # Убираем все символы кроме цифр
-
+        type_payment = "new_device"
         # Сохранение информации о тарифе в состояние FSM
         async with state.proxy() as data:
             data['tariffname'] = tariffname
+            client_id_ref = data['referral_client_id']
 
         # Получение идентификаторов клиента и тарифа
         telegram_id = message.chat.id
@@ -974,7 +999,9 @@ async def process_tariff(message: types.Message, state: FSMContext):
                 json={
                     "client_id": client_id,
                     "rate_id": rate_id,
-                    "telegram_id": telegram_id
+                    "telegram_id": telegram_id,
+                    "ref_client": client_id_ref,
+                    "type_payment": type_payment
                 }
             ) as response:
                 if response.status == 200:
@@ -994,7 +1021,6 @@ async def process_tariff(message: types.Message, state: FSMContext):
                     await message.reply(f"❌ Ошибка создания оплаты: {error_message}")
     except Exception as e:
         await message.reply(f"Произошла ошибка: {str(e)}")
-
 
 
 async def print_state(state: FSMContext):

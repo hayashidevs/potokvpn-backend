@@ -3,7 +3,7 @@ import asyncio
 import aiohttp
 import os
 from datetime import datetime
-from telegram import Bot
+from telegram import Bot, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.constants import ParseMode
 from aiofiles import open as aio_open  # For async file handling
 from io import BytesIO  # Import BytesIO for in-memory file handling
@@ -17,26 +17,56 @@ app = Flask(__name__)
 PTB_TOKEN = config.TELEGRAM_TOKEN
 ptb_bot = Bot(token=PTB_TOKEN)
 
-# Endpoint to initiate payment
 @app.route('/initiate_payment', methods=['POST'])
 async def initiate_payment():
     data = request.json
     client_id = data.get('client_id')
     rate_id = data.get('rate_id')
     telegram_id = data.get('telegram_id')
+    type_payment = data.get('type_payment')  # New parameter: type of payment (new_device or renewal)
+    subs_id = data.get('subs_id')  # Subscription ID for renewal (optional)
+    ref_client = data.get('ref_client')  # Referral client (optional, for new_device only)
 
-    if not all([client_id, rate_id, telegram_id]):
+    # Validate required parameters for both cases
+    if not all([client_id, rate_id, telegram_id, type_payment]):
         return jsonify({'status': 'error', 'message': 'Missing required parameters'}), 400
 
-    # Create payment via web app
-    payment_url = f"{config.WEBSITE}/telegram/create-payment/{client_id}/{rate_id}/"
-    async with aiohttp.ClientSession() as session:
-        async with session.get(payment_url) as response:
-            if response.status == 200:
-                payment_link = str(response.url)
-                return jsonify({'status': 'success', 'payment_link': payment_link})
-            else:
-                return jsonify({'status': 'error', 'message': 'Failed to create payment'}), 500
+    # Handle the "new_device" case
+    if type_payment == "new_device":
+        if not ref_client:
+            return jsonify({'status': 'error', 'message': 'Missing ref_client for new_device'}), 400
+
+        # Generate the payment URL with referral client info
+        payment_url = f"{config.WEBSITE}/telegram/create-payment/{client_id}/{rate_id}/?ref_client={ref_client}"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(payment_url) as response:
+                if response.status == 200:
+                    payment_link = str(response.url)
+                    return jsonify({'status': 'success', 'payment_link': payment_link})
+                else:
+                    error_message = await response.text()
+                    return jsonify({'status': 'error', 'message': f'Failed to create payment: {error_message}'}), 500
+
+    # Handle the "renewal" case
+    elif type_payment == "renewal":
+        if not subs_id:
+            return jsonify({'status': 'error', 'message': 'Missing subs_id for renewal'}), 400
+
+        # Generate the payment URL for renewal with the subscription ID
+        payment_url = f"{config.WEBSITE}/telegram/create-payment/{client_id}/{rate_id}/?type_payment=renewal&subs_id={subs_id}"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(payment_url) as response:
+                if response.status == 200:
+                    payment_link = str(response.url)
+                    return jsonify({'status': 'success', 'payment_link': payment_link})
+                else:
+                    error_message = await response.text()
+                    return jsonify({'status': 'error', 'message': f'Failed to create renewal payment: {error_message}'}), 500
+
+    # Handle unknown payment types
+    else:
+        return jsonify({'status': 'error', 'message': 'Invalid type_payment value'}), 400
+
 
 # Endpoint to handle post-payment actions
 @app.route('/payment_completed', methods=['POST'])
@@ -46,6 +76,7 @@ async def payment_completed():
     rate_id = data.get('rate_id')
     download_link = data.get('download_link')
     datestart = data.get('datestart')  # Ensure datestart is passed in the request
+    ref_client = data.get("ref_client")  # Optional referral client ID
 
     # Check if all required fields are present
     if not all([client_id, rate_id, download_link]):
@@ -71,6 +102,37 @@ async def payment_completed():
     config_dir = os.path.join(os.path.dirname(__file__), 'configs')
     os.makedirs(config_dir, exist_ok=True)
     config_path = os.path.join(config_dir, config_filename)
+
+    # Process referral logic if ref_client is provided
+    if ref_client:
+        try:
+            # Fetch necessary data
+            referral_client_id = ref_client
+            bonus_days = await api_client.get_bonus_days_from_rateid(rate_id)  # Use rate_id for bonus days
+            client_subscriptions = await api_client.get_subscriptions_by_client_id(referral_client_id)
+            ref_tg_id = await api_client.get_telegram_id_for_client_id(referral_client_id)
+
+            # Prepare keyboard for referral subscription selection
+            keyboard = []
+            for subscription in client_subscriptions:
+                button = InlineKeyboardButton(
+                    text=subscription['name'] if subscription['name'] else "Unnamed Subscription",
+                    callback_data=f'add_subs_{subscription["id"]}///{bonus_days}'
+                )
+                keyboard.append([button])  # Each list in keyboard is a row of buttons
+
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            # Send message to the referral client
+            await ptb_bot.send_message(
+                chat_id=ref_tg_id,
+                text=f"Ваш друг воспользовался Вашим реферальным кодом\n"
+                     f"📲 Выберите подписку, на которое мы добавим Вам {bonus_days} дней доступа",
+                reply_markup=reply_markup
+            )
+        except Exception as e:
+            # Log any issues with referral processing
+            print(f"Error processing referral logic: {e}")
 
     # Asynchronously download the config file
     async with aiohttp.ClientSession() as session:
@@ -102,6 +164,7 @@ async def payment_completed():
                 return jsonify({'status': 'success', 'message': 'File downloaded and sent to user'})
             else:
                 return jsonify({'status': 'error', 'message': 'Failed to download the config file'}), 500
+
 
 # Run Flask app on a different port to avoid conflicts
 if __name__ == '__main__':

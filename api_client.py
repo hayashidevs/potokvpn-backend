@@ -834,3 +834,38 @@ async def save_config_from_url(subscription_id, download_url):
     
     except Exception as e:
         return f"Error occurred while saving config: {str(e)}"
+    
+
+async def get_bonus_days_from_rateid(rate_id):
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"{config.DJANGO_API_URL}/api/rates/{rate_id}/"
+            async with session.get(url) as response:
+                if response.status != 200:
+                    raise ValueError(f"Failed to fetch rate details: {response.status}")
+                log(f"Failed to fetch rate details: {response.status}")
+                
+                rate_details = await response.json()
+                print(f"Raw rate details fetched for rate ID {rate_id}: {rate_details}")  # Detailed debug statement
+                log(f"Raw rate details fetched for rate ID {rate_id}: {rate_details}")
+
+                # Ensure rate details is a dictionary
+                if not isinstance(rate_details, dict):
+                    raise ValueError(f"Rate details are not a valid dictionary for rate ID: {rate_id}")
+                log(f"Rate details are not a valid dictionary for rate ID: {rate_id}")
+
+                # Fetch the bonus_days from the rate details
+                bonus_days = rate_details.get('bonus_days', None)
+                print(f"Bonus days fetched for rate ID {rate_id}: {bonus_days}")  # Detailed debug statement
+                log(f"Bonus days fetched for rate ID {rate_id}: {bonus_days}")
+
+                if bonus_days is None:
+                    print(f"Bonus days is None for rate ID: {rate_id}")
+                    log(f"Bonus days is None for rate ID: {rate_id}")
+                    return None
+
+                return bonus_days
+    except Exception as e:
+        print(f"Error fetching bonus days: {e}")
+        log(f"Error fetching bonus days: {e}")
+        return None
