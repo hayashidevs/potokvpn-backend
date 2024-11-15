@@ -469,10 +469,18 @@ async def my_devices(message: types.Message, state: FSMContext):
     for subscription in subscriptions:
         if subscription['clientid'] == client_id:
             date_string = subscription['datestart']
-            date_object = datetime.strptime(date_string, "%Y-%m-%dT%H:%M:%SZ")
-            readable_date = date_object.strftime("%d %B %Y, %H:%M:%S")
             date_string2 = subscription['dateend']
-            date_object2 = datetime.strptime(date_string2, "%Y-%m-%dT%H:%M:%SZ")
+
+            # Parsing with fallback for microseconds
+            for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S.%fZ"):
+                try:
+                    date_object = datetime.strptime(date_string, fmt)
+                    date_object2 = datetime.strptime(date_string2, fmt)
+                    break
+                except ValueError:
+                    continue
+
+            readable_date = date_object.strftime("%d %B %Y, %H:%M:%S")
             readable_date2 = date_object2.strftime("%d %B %Y, %H:%M:%S")
             texttoper += f"<pre>Подписка: {subscription['name']}\nНачало: {readable_date}\nКонец: {readable_date2}\n\n"
 
@@ -565,16 +573,33 @@ async def get_config(call: types.CallbackQuery):
         if not subs['is_used']:
             datestart = subs['datestart']
             dateend = subs['dateend']
-            days = (datetime.strptime(dateend, "%Y-%m-%dT%H:%M:%SZ") - datetime.strptime(datestart, "%Y-%m-%dT%H:%M:%SZ")).days
+            # Try parsing with fractional seconds, fallback to without
+            try:
+                start_date_obj = datetime.strptime(datestart, "%Y-%m-%dT%H:%M:%S.%fZ")
+            except ValueError:
+                start_date_obj = datetime.strptime(datestart, "%Y-%m-%dT%H:%M:%SZ")
+
+            try:
+                end_date_obj = datetime.strptime(dateend, "%Y-%m-%dT%H:%M:%S.%fZ")
+            except ValueError:
+                end_date_obj = datetime.strptime(dateend, "%Y-%m-%dT%H:%M:%SZ")
+
+            # Calculate remaining days
+            days = (end_date_obj - start_date_obj).days
+
             if days >= 31:
                 reply_keyboard.add(
-                    InlineKeyboardButton(f"{subs['name']} - {days // 30} мес." if subs['name'] else "Unnamed Rate",
-                                        callback_data=f'g_conf_{subs["id"]}')
+                    InlineKeyboardButton(
+                        f"{subs['name']} - {days // 30} мес." if subs['name'] else "Unnamed Rate",
+                        callback_data=f'g_conf_{subs["id"]}'
+                    )
                 )
             else:
                 reply_keyboard.add(
-                    InlineKeyboardButton(f"{subs['name']} - {days} дней" if subs['name'] else "Unnamed Rate",
-                                        callback_data=f'g_conf_{subs["id"]}')
+                    InlineKeyboardButton(
+                        f"{subs['name']} - {days} дней" if subs['name'] else "Unnamed Rate",
+                        callback_data=f'g_conf_{subs["id"]}'
+                    )
                 )
     await bot.send_message(call.from_user.id, "📱 Выберите подписку, для которой необходимо получить потерянный/удаленный файл", reply_markup=reply_keyboard)
 
@@ -945,7 +970,7 @@ async def process_tariff(message: types.Message, state: FSMContext):
         # Отправка запроса на Flask-сервер для создания оплаты
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                f"http://127.0.0.1:5000/initiate_payment",
+                f"{config.PAYMENT_MODULE}/initiate_payment",
                 json={
                     "client_id": client_id,
                     "rate_id": rate_id,
@@ -987,75 +1012,62 @@ async def midnight_task():
             subscriptions = await response.json()
 
         for i in subscriptions:
-            now = datetime.utcnow()  # Use UTC time for consistent comparisons
-            end_datetime = datetime.strptime(i['dateend'], "%Y-%m-%dT%H:%M:%SZ")
+            now = datetime.utcnow()
+            try:
+                # Try parsing with fractional seconds
+                end_datetime = datetime.strptime(i['dateend'], "%Y-%m-%dT%H:%M:%S.%fZ")
+            except ValueError:
+                # Fallback if fractional seconds are missing
+                end_datetime = datetime.strptime(i['dateend'], "%Y-%m-%dT%H:%M:%SZ")
+
             time_difference = end_datetime - now
             sub_name = i['name']
+            telegram_id = await get_telegram_id_for_client_id(i['clientid'])
 
+            # Preparing message content
             if time_difference.days == 2:
-                telegram_id = await get_telegram_id_for_client_id(i['clientid'])
-                print(f"Sending message to Telegram ID: {telegram_id}")
-                
                 inline = InlineKeyboardMarkup().add(InlineKeyboardButton(text="⏩️ Продлить подписку", callback_data='change_plan'))
-                
-                try:
-                    await bot.send_message(
-                        chat_id=telegram_id,
-                        text=f"🔚 Срок действия Вашей подписки <b>{sub_name}</b> истекает через 2 дня\n⏩️ Продлить действие подписки можно в личном кабинете, либо по кнопке [⏩️ Продлить подписку] в сообщении\n🎟️ Пригласи друга и получи до 30 дней бесплатного доступа",
-                        parse_mode=ParseMode.HTML,
-                        reply_markup=inline
-                    )
-                    print("Message sent successfully.")
-                except Exception as e:
-                    log(f"Failed to send message: {e}")
-                    print(f"Failed to send message: {e}")
-
+                message_text = (
+                    f"🔚 Срок действия Вашей подписки <b>{sub_name}</b> истекает через 2 дня\n"
+                    "⏩️ Продлить действие подписки можно в личном кабинете, либо по кнопке [⏩️ Продлить подписку] в сообщении\n"
+                    "🎟️ Пригласи друга и получи до 30 дней бесплатного доступа"
+                )
             elif time_difference.days == 1:
-                telegram_id = await get_telegram_id_for_client_id(i['clientid'])
-                print(f"Sending message to Telegram ID: {telegram_id}")
-                
                 inline = InlineKeyboardMarkup().add(InlineKeyboardButton(text="⏩️ Продлить подписку", callback_data='change_plan'))
-                
-                try:
-                    await bot.send_message(
-                        chat_id=telegram_id,
-                        text=f"🔚 Срок действия Вашей подписки <b>{sub_name}</b> истекает через 1 день\n⏩️ Продлить действие подписки можно в личном кабинете, либо по кнопке [⏩️ Продлить подписку] в сообщении\n🎟️ Пригласи друга и получи до 30 дней бесплатного доступа",
-                        parse_mode=ParseMode.HTML,
-                        reply_markup=inline
-                    )
-                    print("Message sent successfully.")
-                except Exception as e:
-                    log(f"Failed to send message: {e}")
-                    print(f"Failed to send message: {e}")
+                message_text = (
+                    f"🔚 Срок действия Вашей подписки <b>{sub_name}</b> истекает через 1 день\n"
+                    "⏩️ Продлить действие подписки можно в личном кабинете, либо по кнопке [⏩️ Продлить подписку] в сообщении\n"
+                    "🎟️ Пригласи друга и получи до 30 дней бесплатного доступа"
+                )
             elif time_difference.days == 0:
-                telegram_id = await get_telegram_id_for_client_id(i['clientid'])
-                print(f"Sending message to Telegram ID: {telegram_id}")
-                
                 inline = InlineKeyboardMarkup().add(InlineKeyboardButton(text="⏩️ Добавить подписку", callback_data='add_device'))
-                
-                try:
-                    await bot.send_message(
-                        chat_id=telegram_id,
-                        text=f"🔚 Срок действия Вашей подписки <b>{sub_name}</b> истёк\n⏩️ Оформить подписку можно в личном кабинете, либо по кнопке [⏩️ Добавить подписку] в сообщении\n🎟️ Пригласи друга и получи до 30 дней бесплатного доступа",
-                        parse_mode=ParseMode.HTML,
-                        reply_markup=inline
-                    )
-                    print("Message sent successfully.")
-                except Exception as e:
-                    (f"Failed to send message: {e}")
-                    print(f"Failed to send message: {e}")
+                message_text = (
+                    f"🔚 Срок действия Вашей подписки <b>{sub_name}</b> истёк\n"
+                    "⏩️ Оформить подписку можно в личном кабинете, либо по кнопке [⏩️ Добавить подписку] в сообщении\n"
+                    "🎟️ Пригласи друга и получи до 30 дней бесплатного доступа"
+                )
+            else:
+                continue
 
-
-
-
-
+            # Sending the message
+            try:
+                await bot.send_message(
+                    chat_id=telegram_id,
+                    text=message_text,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=inline
+                )
+                print("Message sent successfully.")
+            except Exception as e:
+                log(f"Failed to send message: {e}")
+                print(f"Failed to send message: {e}")
 
 async def check_time():
     while True:
         now = datetime.now().time()
         if now.hour == 20 and now.minute == 0:
             await midnight_task()
-        await asyncio.sleep(60)  # Проверять время каждую минуту
+        await asyncio.sleep(60)  # Check every minute
 
 
 if __name__ == '__main__':

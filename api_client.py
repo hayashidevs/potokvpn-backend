@@ -172,7 +172,7 @@ async def get_user_details(telegram_id):
         client_id = await get_client_id_from_telegram_id(telegram_id)
         if not client_id:
             return "No valid client ID found for the given Telegram ID."
-        log("No valid client ID found for the given Telegram ID.: ", client_id)
+        log(f"No valid client ID found for the given Telegram ID.: {client_id}")
 
         async with aiohttp.ClientSession() as session:
             async with session.get(f"{config.DJANGO_API_URL}/api/clients/{client_id}/") as response:
