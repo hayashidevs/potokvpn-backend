@@ -17,6 +17,7 @@ from .serializers import clientSerializer, rateSerializer, subscriptionSerialize
 
 import json
 from datetime import timedelta
+from dateutil import parser
 
 import logging
 import os
@@ -135,15 +136,33 @@ def update_subscription(request):
 @api_view(['POST'])
 def update_subscription_dateend(request):
     subscription_id = request.data.get('subscription_id')
-    dateend_update = request.data.get('dateend')
+    dateend_update_str = request.data.get('dateend')
+
+    if not subscription_id or not dateend_update_str:
+        return Response({'status': 'error', 'message': 'Missing subscription_id or dateend'}, status=400)
 
     try:
+        # Parse the incoming dateend string and ensure it is timezone-aware
+        dateend_update = parser.parse(dateend_update_str)
+
+        # Ensure dateend is timezone-aware if it is naive
+        if dateend_update.tzinfo is None:
+            dateend_update = timezone.make_aware(dateend_update, timezone.get_current_timezone())
+
+        # Retrieve the subscription instance
         subscription_instance = subscription.objects.get(id=subscription_id)
-        subscription_instance.dateend= dateend_update
+        
+        # Update the dateend and save the subscription
+        subscription_instance.dateend = dateend_update
         subscription_instance.save()
-        return Response({'status': 'success', 'message': 'Subscription updated successfully'})
+
+        return Response({'status': 'success', 'message': 'Subscription dateend updated successfully'})
+
     except subscription.DoesNotExist:
         return Response({'status': 'error', 'message': 'Subscription not found'}, status=404)
+
+    except ValueError as e:
+        return Response({'status': 'error', 'message': f'Invalid date format for dateend: {e}'}, status=400)
 
 @api_view(['DELETE'])
 def delete_subscription(request, subscription_id):

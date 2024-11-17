@@ -470,6 +470,16 @@ async def my_devices(message: types.Message, state: FSMContext):
         if subscription['clientid'] == client_id:
             date_string = subscription['datestart']
             date_string2 = subscription['dateend']
+            try:
+                date_object = datetime.strptime(date_string, "%Y-%m-%dT%H:%M:%S.%fZ")
+            except ValueError:
+                date_object = datetime.strptime(date_string, "%Y-%m-%dT%H:%M:%SZ")
+
+            try:
+                date_object2 = datetime.strptime(date_string2, "%Y-%m-%dT%H:%M:%S.%fZ")
+            except ValueError:
+                date_object2 = datetime.strptime(date_string2, "%Y-%m-%dT%H:%M:%SZ")
+
 
             # Parsing with fallback for microseconds
             for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S.%fZ"):
@@ -548,7 +558,18 @@ async def change_plan(call: types.CallbackQuery):
     for subs in subs_user:
         datestart = subs['datestart']
         dateend = subs['dateend']
-        days = (datetime.strptime(dateend, "%Y-%m-%dT%H:%M:%SZ") - datetime.strptime(datestart, "%Y-%m-%dT%H:%M:%SZ")).days
+        # Parse `datestart` and `dateend` with a fallback mechanism for microseconds
+        try:
+            datestart_obj = datetime.strptime(datestart, "%Y-%m-%dT%H:%M:%S.%fZ")
+        except ValueError:
+            datestart_obj = datetime.strptime(datestart, "%Y-%m-%dT%H:%M:%SZ")
+
+        try:
+            dateend_obj = datetime.strptime(dateend, "%Y-%m-%dT%H:%M:%S.%fZ")
+        except ValueError:
+            dateend_obj = datetime.strptime(dateend, "%Y-%m-%dT%H:%M:%SZ")
+
+        days = (dateend_obj - datestart_obj).days
 
         if days >= 31:
             reply_keyboard.add(
@@ -822,7 +843,7 @@ async def process_device_type(message: types.Message, state: FSMContext):
                         keyboard_payment = InlineKeyboardMarkup().add(InlineKeyboardButton(text="Оплатить", url=payment_link))
                         # Отправка ссылки на оплату в Telegram
                         await message.reply(
-                            f"✅ Пожалуйста, завершите оплату по следующей ссылке\n"
+                            f"💵 Пожалуйста, завершите оплату по следующей ссылке\n"
                             "💬 После завершения оплаты конфигурация будет отправлена в этот чат.", reply_markup=keyboard_payment
                         )
                     else:
@@ -985,7 +1006,10 @@ async def process_tariff(message: types.Message, state: FSMContext):
         # Сохранение информации о тарифе в состояние FSM
         async with state.proxy() as data:
             data['tariffname'] = tariffname
-            client_id_ref = data['referral_client_id']
+            try:
+                client_id_ref = data['referral_client_id']
+            except:
+                client_id_ref = None
 
         # Получение идентификаторов клиента и тарифа
         telegram_id = message.chat.id
@@ -1011,7 +1035,7 @@ async def process_tariff(message: types.Message, state: FSMContext):
                         keyboard_payment = InlineKeyboardMarkup().add(InlineKeyboardButton(text="Оплатить", url=payment_link))
                         # Отправка ссылки на оплату в Telegram
                         await message.reply(
-                            f"✅ Пожалуйста, завершите оплату по следующей ссылке\n"
+                            f"💵 Пожалуйста, завершите оплату по следующей ссылке\n"
                             "💬 После завершения оплаты конфигурация будет отправлена в этот чат.", reply_markup=keyboard_payment
                         )
                     else:
@@ -1040,10 +1064,8 @@ async def midnight_task():
         for i in subscriptions:
             now = datetime.utcnow()
             try:
-                # Try parsing with fractional seconds
                 end_datetime = datetime.strptime(i['dateend'], "%Y-%m-%dT%H:%M:%S.%fZ")
             except ValueError:
-                # Fallback if fractional seconds are missing
                 end_datetime = datetime.strptime(i['dateend'], "%Y-%m-%dT%H:%M:%SZ")
 
             time_difference = end_datetime - now
