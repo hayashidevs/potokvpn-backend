@@ -46,7 +46,6 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'api',
-    'axes',
     'django_cron',
 ]
 
@@ -58,21 +57,16 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'axes.middleware.AxesMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
 ]
 
-AXES_FAILURE_LIMIT = 5
-AXES_LOCKOUT_CALLABLE = 'api.utils.custom_lockout_response'  # Custom lockout response function
-AXES_LOCKOUT_URL = '/account_locked/'  # Redirect to a specific URL on lockout
-AXES_COOLOFF_TIME = 1  # Cool-off time (in hours) before resetting failed attempts
 
 ROOT_URLCONF = 'myproject.urls'
 
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [os.path.join(BASE_DIR, 'myproject', 'api', 'templates')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [

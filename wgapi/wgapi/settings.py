@@ -42,7 +42,6 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'wireguard',
-    'axes',
 ]
 
 MIDDLEWARE = [
@@ -53,13 +52,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'axes.middleware.AxesMiddleware',
 ]
-
-AXES_FAILURE_LIMIT = 5
-AXES_LOCKOUT_CALLABLE = 'wireguard.utils.custom_lockout_response'  # Custom lockout response function
-AXES_LOCKOUT_URL = '/account_locked/'  # Redirect to a specific URL on lockout
-AXES_COOLOFF_TIME = 1 # Cool-off time (in hours) before resetting failed attempts
 
 ROOT_URLCONF = 'wgapi.urls'
 

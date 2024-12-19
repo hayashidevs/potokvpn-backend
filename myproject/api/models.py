@@ -1,6 +1,7 @@
 from django.db import models
 import uuid
 from django.utils import timezone
+from dateutil import parser
 
 class client(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -110,8 +111,18 @@ class subscription(models.Model):
         return f"{self.clientid.username} - {self.rateid.name}"
 
     def save(self, *args, **kwargs):
-        if not self.dateend.tzinfo:
+        # Handle dateend if it is a string
+        if isinstance(self.dateend, str):
+            try:
+                self.dateend = parser.parse(self.dateend)
+            except ValueError as e:
+                raise ValueError(f"Invalid date format for dateend: {e}")
+
+        # Ensure dateend is timezone-aware
+        if self.dateend and not self.dateend.tzinfo:
             self.dateend = timezone.make_aware(self.dateend, timezone.get_current_timezone())
+        
+        # Save the subscription
         super().save(*args, **kwargs)
 
 class codes(models.Model):

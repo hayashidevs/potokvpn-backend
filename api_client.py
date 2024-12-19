@@ -172,7 +172,7 @@ async def get_user_details(telegram_id):
         client_id = await get_client_id_from_telegram_id(telegram_id)
         if not client_id:
             return "No valid client ID found for the given Telegram ID."
-        log("No valid client ID found for the given Telegram ID.: ", client_id)
+        log(f"No valid client ID found for the given Telegram ID.: {client_id}")
 
         async with aiohttp.ClientSession() as session:
             async with session.get(f"{config.DJANGO_API_URL}/api/clients/{client_id}/") as response:
@@ -801,3 +801,71 @@ async def check_and_register_with_username(telegram_id, username, first_name, la
                 logging.error(f"Failed to check user existence ({response.status}): {await response.text()}")
                 return False
 
+async def save_config_from_url(subscription_id, download_url):
+    """
+    Fetches a configuration file from the provided URL and saves it to the 'basedir/configs' directory.
+    
+    Args:
+        subscription_id (str): The subscription ID used to name the config file.
+        download_url (str): The URL from which to download the configuration file.
+        
+    Returns:
+        str: The file path where the config was saved, or an error message if the process fails.
+    """
+    try:
+        # Fetch the config content from the URL
+        response = requests.get(download_url)
+        
+        if response.status_code != 200:
+            return f"Failed to download config: {response.status_code} - {response.text}"
+        
+        # Create the path for saving the config file
+        config_filename = f"{subscription_id[:8]}.conf"
+        config_dir = os.path.join(os.path.dirname(__file__), 'configs')
+        os.makedirs(config_dir, exist_ok=True)
+        
+        config_path = os.path.join(config_dir, config_filename)
+        
+        # Save the content to a file
+        with open(config_path, 'w') as config_file:
+            config_file.write(response.text)
+        
+        return config_path
+    
+    except Exception as e:
+        return f"Error occurred while saving config: {str(e)}"
+    
+
+async def get_bonus_days_from_rateid(rate_id):
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"{config.DJANGO_API_URL}/api/rates/{rate_id}/"
+            async with session.get(url) as response:
+                if response.status != 200:
+                    raise ValueError(f"Failed to fetch rate details: {response.status}")
+                log(f"Failed to fetch rate details: {response.status}")
+                
+                rate_details = await response.json()
+                print(f"Raw rate details fetched for rate ID {rate_id}: {rate_details}")  # Detailed debug statement
+                log(f"Raw rate details fetched for rate ID {rate_id}: {rate_details}")
+
+                # Ensure rate details is a dictionary
+                if not isinstance(rate_details, dict):
+                    raise ValueError(f"Rate details are not a valid dictionary for rate ID: {rate_id}")
+                log(f"Rate details are not a valid dictionary for rate ID: {rate_id}")
+
+                # Fetch the bonus_days from the rate details
+                bonus_days = rate_details.get('bonus_days', None)
+                print(f"Bonus days fetched for rate ID {rate_id}: {bonus_days}")  # Detailed debug statement
+                log(f"Bonus days fetched for rate ID {rate_id}: {bonus_days}")
+
+                if bonus_days is None:
+                    print(f"Bonus days is None for rate ID: {rate_id}")
+                    log(f"Bonus days is None for rate ID: {rate_id}")
+                    return None
+
+                return bonus_days
+    except Exception as e:
+        print(f"Error fetching bonus days: {e}")
+        log(f"Error fetching bonus days: {e}")
+        return None
